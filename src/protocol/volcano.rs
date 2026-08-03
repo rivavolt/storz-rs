@@ -297,6 +297,21 @@ impl VaporizerControl for VolcanoHybrid {
         Ok(())
     }
 
+    async fn set_temperature_unit(&self, celsius: bool) -> Result<(), StorzError> {
+        let ch = self.characteristic(VOLCANO_DISPLAY).await?;
+        // Register-mask write: low 16 bits select the FAHRENHEIT_ENA flag, bit 16 clears instead of sets, so celsius=true clears the flag.
+        let raw: u32 = if celsius {
+            0x10000 + volcano_flags::FAHRENHEIT_ENA as u32
+        } else {
+            volcano_flags::FAHRENHEIT_ENA as u32
+        };
+        self.peripheral
+            .write(&ch, &raw.to_le_bytes(), WriteType::WithoutResponse)
+            .await?;
+        debug!("Volcano temperature unit set to celsius={celsius}");
+        Ok(())
+    }
+
     async fn set_display_on_cooling(&self, on: bool) -> Result<(), StorzError> {
         let ch = self.characteristic(VOLCANO_DISPLAY).await?;
         let raw: u32 = if on {
