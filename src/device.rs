@@ -1,6 +1,7 @@
 use std::fmt;
 
 /// Supported Storz & Bickel device models.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DeviceModel {
     VolcanoHybrid,
@@ -21,6 +22,7 @@ impl fmt::Display for DeviceModel {
 }
 
 /// Heater mode for Venty/Veazy devices.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HeaterMode {
     /// Heater off
@@ -57,6 +59,7 @@ impl HeaterMode {
 }
 
 /// Current state snapshot of a vaporizer device.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DeviceState {
     /// Current measured temperature in Celsius.
@@ -94,6 +97,7 @@ impl fmt::Display for DeviceState {
 }
 
 /// Device settings (Venty/Veazy).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DeviceSettings {
     /// Temperature unit: true = Celsius, false = Fahrenheit
@@ -119,6 +123,7 @@ pub struct DeviceSettings {
 }
 
 /// Device information (serial number, firmware, etc.).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DeviceInfo {
     /// Serial number string.

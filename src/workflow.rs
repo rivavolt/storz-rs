@@ -14,6 +14,7 @@ use crate::error::StorzError;
 use crate::protocol::VaporizerControl;
 
 /// A single step in a workflow.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkflowStep {
     /// Target temperature in Celsius.
@@ -25,6 +26,7 @@ pub struct WorkflowStep {
 }
 
 /// A named workflow consisting of multiple steps.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Workflow {
     /// Human-readable name.
