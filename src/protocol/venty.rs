@@ -52,9 +52,7 @@ impl Venty {
 
     async fn write_command(&self, buf: &[u8]) -> Result<(), StorzError> {
         let ch = self.control_characteristic().await?;
-        self.peripheral
-            .write(&ch, buf, WriteType::WithoutResponse)
-            .await?;
+        self.peripheral.write(&ch, buf, WriteType::WithoutResponse).await?;
         Ok(())
     }
 
@@ -93,13 +91,7 @@ impl Venty {
 
             while let Some(data) = stream.next().await {
                 Self::debug_dump_notification(&data.value);
-                Self::handle_notification_inner(
-                    &state,
-                    &device_info,
-                    &state_tx,
-                    model,
-                    &data.value,
-                );
+                Self::handle_notification_inner(&state, &device_info, &state_tx, model, &data.value);
             }
 
             warn!("{model} notification stream ended (disconnect?)");
@@ -112,15 +104,8 @@ impl Venty {
             return;
         }
         let cmd = data[0];
-        let hex: String = data
-            .iter()
-            .map(|b| format!("{b:02X}"))
-            .collect::<Vec<_>>()
-            .join(" ");
-        debug!(
-            "Venty notification: cmd=0x{cmd:02X} len={} [{hex}]",
-            data.len()
-        );
+        let hex: String = data.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ");
+        debug!("Venty notification: cmd=0x{cmd:02X} len={} [{hex}]", data.len());
 
         if data.len() >= 2 {
             debug!("  [0] cmd_id    = 0x{:02X}", data[0]);
@@ -128,19 +113,11 @@ impl Venty {
         }
         if data.len() >= 4 {
             let raw23 = u16::from_le_bytes([data[2], data[3]]);
-            debug!(
-                "  [2:3] bytes   = 0x{:04X} (u16={raw23}, as_temp={:.1}°C — UNUSED)",
-                raw23,
-                raw23 as f32 / 10.0
-            );
+            debug!("  [2:3] bytes   = 0x{:04X} (u16={raw23}, as_temp={:.1}°C — UNUSED)", raw23, raw23 as f32 / 10.0);
         }
         if data.len() >= 6 {
             let raw45 = u16::from_le_bytes([data[4], data[5]]);
-            debug!(
-                "  [4:5] target  = 0x{:04X} (u16={raw45}, {:.1}°C)",
-                raw45,
-                raw45 as f32 / 10.0
-            );
+            debug!("  [4:5] target  = 0x{:04X} (u16={raw45}, {:.1}°C)", raw45, raw45 as f32 / 10.0);
         }
         if data.len() >= 7 {
             debug!("  [6]   boost   = {}°C", data[6]);
@@ -287,15 +264,11 @@ impl Venty {
                     Ok(i) => i,
                     Err(_) => return,
                 };
-                let heater_runtime =
-                    data[1] as u32 + (data[2] as u32) * 256 + (data[3] as u32) * 65536;
-                let charging_time =
-                    data[4] as u32 + (data[5] as u32) * 256 + (data[6] as u32) * 65536;
+                let heater_runtime = data[1] as u32 + (data[2] as u32) * 256 + (data[3] as u32) * 65536;
+                let charging_time = data[4] as u32 + (data[5] as u32) * 256 + (data[6] as u32) * 65536;
                 info.heater_runtime_minutes = Some(heater_runtime);
                 info.battery_charging_time_minutes = Some(charging_time);
-                debug!(
-                    "Venty/Veazy heater runtime: {heater_runtime}min, charging time: {charging_time}min"
-                );
+                debug!("Venty/Veazy heater runtime: {heater_runtime}min, charging time: {charging_time}min");
             }
             0x05 if data.len() >= 19 => {
                 // Device data: serial number (bytes 9-14 + 15-16), color index (byte 18)
@@ -308,18 +281,11 @@ impl Venty {
                 let name = String::from_utf8_lossy(&data[9..15]);
                 info.serial_number = Some(format!("{prefix}{name}"));
                 info.color_index = Some(data[18]);
-                debug!(
-                    "Venty/Veazy serial: {}, color: {}",
-                    info.serial_number.as_deref().unwrap_or("?"),
-                    data[18]
-                );
+                debug!("Venty/Veazy serial: {}, color: {}", info.serial_number.as_deref().unwrap_or("?"), data[18]);
             }
             0x06 if data.len() >= 7 => {
                 // Brightness/vibration/boost_timeout response
-                debug!(
-                    "Venty/Veazy brightness={}, vibration={}, boost_timeout={}",
-                    data[2], data[5], data[6]
-                );
+                debug!("Venty/Veazy brightness={}, vibration={}, boost_timeout={}", data[2], data[5], data[6]);
                 // These are read-only responses; state is maintained via CMD 0x01 notifications
             }
             0x0d => {
@@ -327,10 +293,7 @@ impl Venty {
                 debug!("Venty/Veazy find-my-device response received");
             }
             _ => {
-                debug!(
-                    "Venty/Veazy unhandled notification cmd=0x{cmd_id:02X} len={}",
-                    data.len()
-                );
+                debug!("Venty/Veazy unhandled notification cmd=0x{cmd_id:02X} len={}", data.len());
             }
         }
     }
@@ -342,16 +305,16 @@ impl VaporizerControl for Venty {
         // Venty doesn't expose current temp directly via a read;
         // it comes through notifications. Return cached value.
         let state = self.state.lock().await;
-        state.current_temp.ok_or(StorzError::ParseError(
-            "Current temperature not yet available from device notifications".into(),
-        ))
+        state
+            .current_temp
+            .ok_or(StorzError::ParseError("Current temperature not yet available from device notifications".into()))
     }
 
     async fn get_target_temperature(&self) -> Result<f32, StorzError> {
         let state = self.state.lock().await;
-        state.target_temp.ok_or(StorzError::ParseError(
-            "Target temperature not yet available from device notifications".into(),
-        ))
+        state
+            .target_temp
+            .ok_or(StorzError::ParseError("Target temperature not yet available from device notifications".into()))
     }
 
     async fn set_target_temperature(&self, celsius: f32) -> Result<(), StorzError> {
@@ -392,17 +355,11 @@ impl VaporizerControl for Venty {
     }
 
     async fn pump_on(&self) -> Result<(), StorzError> {
-        Err(StorzError::UnsupportedOperation {
-            device: self.model.to_string(),
-            operation: "pump_on".into(),
-        })
+        Err(StorzError::UnsupportedOperation { device: self.model.to_string(), operation: "pump_on".into() })
     }
 
     async fn pump_off(&self) -> Result<(), StorzError> {
-        Err(StorzError::UnsupportedOperation {
-            device: self.model.to_string(),
-            operation: "pump_off".into(),
-        })
+        Err(StorzError::UnsupportedOperation { device: self.model.to_string(), operation: "pump_off".into() })
     }
 
     async fn get_state(&self) -> Result<DeviceState, StorzError> {
@@ -410,20 +367,17 @@ impl VaporizerControl for Venty {
         Ok(state.clone())
     }
 
-    async fn subscribe_state(
-        &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = DeviceState> + Send>>, StorzError> {
+    async fn subscribe_state(&self) -> Result<Pin<Box<dyn Stream<Item = DeviceState> + Send>>, StorzError> {
         let rx = self.state_tx.subscribe();
-        Ok(Box::pin(
-            BroadcastStream::new(rx).filter_map(|r| async move { r.ok() }),
-        ))
+        Ok(Box::pin(BroadcastStream::new(rx).filter_map(|r| async move { r.ok() })))
     }
 
     async fn get_settings(&self) -> Result<DeviceSettings, StorzError> {
         let state = self.state.lock().await;
-        state.settings.clone().ok_or(StorzError::ParseError(
-            "Settings not yet available from device notifications".into(),
-        ))
+        state
+            .settings
+            .clone()
+            .ok_or(StorzError::ParseError("Settings not yet available from device notifications".into()))
     }
 
     async fn set_temperature_unit(&self, celsius: bool) -> Result<(), StorzError> {
@@ -436,10 +390,7 @@ impl VaporizerControl for Venty {
             ],
         );
         self.write_command(&buf).await?;
-        debug!(
-            "Venty/Veazy temperature unit set to {}",
-            if celsius { "Celsius" } else { "Fahrenheit" }
-        );
+        debug!("Venty/Veazy temperature unit set to {}", if celsius { "Celsius" } else { "Fahrenheit" });
         Ok(())
     }
 

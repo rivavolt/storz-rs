@@ -26,11 +26,7 @@ impl VolcanoHybrid {
     pub async fn new(peripheral: Peripheral) -> Result<Self, StorzError> {
         let (state_tx, _) = broadcast::channel(16);
 
-        let device = Self {
-            peripheral,
-            state: Arc::new(Mutex::new(DeviceState::default())),
-            state_tx,
-        };
+        let device = Self { peripheral, state: Arc::new(Mutex::new(DeviceState::default())), state_tx };
 
         device.init_notifications().await?;
         device.spawn_notification_loop();
@@ -47,9 +43,7 @@ impl VolcanoHybrid {
 
     async fn write_u8(&self, uuid: uuid::Uuid) -> Result<(), StorzError> {
         let ch = self.characteristic(uuid).await?;
-        self.peripheral
-            .write(&ch, &[0x00], WriteType::WithoutResponse)
-            .await?;
+        self.peripheral.write(&ch, &[0x00], WriteType::WithoutResponse).await?;
         Ok(())
     }
 
@@ -110,10 +104,7 @@ impl VolcanoHybrid {
             };
 
             while let Some(data) = stream.next().await {
-                debug!(
-                    "Volcano Hybrid raw notification uuid={} bytes={:02X?}",
-                    data.uuid, data.value
-                );
+                debug!("Volcano Hybrid raw notification uuid={} bytes={:02X?}", data.uuid, data.value);
                 Self::handle_notification_inner(&state, &state_tx, data.uuid, &data.value);
             }
 
@@ -174,11 +165,7 @@ impl VolcanoHybrid {
                 let _ = state_tx.send(state.clone());
             }
             _ => {
-                debug!(
-                    "Volcano Hybrid unhandled notification uuid={} len={}",
-                    uuid,
-                    data.len()
-                );
+                debug!("Volcano Hybrid unhandled notification uuid={} len={}", uuid, data.len());
             }
         }
     }
@@ -201,9 +188,7 @@ impl VaporizerControl for VolcanoHybrid {
     async fn set_target_temperature(&self, celsius: f32) -> Result<(), StorzError> {
         let ch = self.characteristic(VOLCANO_TARGET_TEMP).await?;
         let raw = utils::celsius_to_raw_u32(celsius)?;
-        self.peripheral
-            .write(&ch, &raw, WriteType::WithoutResponse)
-            .await?;
+        self.peripheral.write(&ch, &raw, WriteType::WithoutResponse).await?;
         debug!("Volcano target temp set to {celsius}°C");
         Ok(())
     }
@@ -237,35 +222,24 @@ impl VaporizerControl for VolcanoHybrid {
         Ok(state.clone())
     }
 
-    async fn subscribe_state(
-        &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = DeviceState> + Send>>, StorzError> {
+    async fn subscribe_state(&self) -> Result<Pin<Box<dyn Stream<Item = DeviceState> + Send>>, StorzError> {
         let rx = self.state_tx.subscribe();
-        Ok(Box::pin(
-            BroadcastStream::new(rx).filter_map(|r| async move { r.ok() }),
-        ))
+        Ok(Box::pin(BroadcastStream::new(rx).filter_map(|r| async move { r.ok() })))
     }
 
     async fn set_brightness(&self, value: u16) -> Result<(), StorzError> {
         let ch = self.characteristic(VOLCANO_BRIGHTNESS).await?;
         let raw = value.to_le_bytes();
-        self.peripheral
-            .write(&ch, &raw, WriteType::WithoutResponse)
-            .await?;
+        self.peripheral.write(&ch, &raw, WriteType::WithoutResponse).await?;
         debug!("Volcano brightness set to {value}");
         Ok(())
     }
 
     async fn set_vibration(&self, on: bool) -> Result<(), StorzError> {
         let ch = self.characteristic(VOLCANO_VIBRATION).await?;
-        let raw: u32 = if on {
-            volcano_vibration_flags::VIBRATION
-        } else {
-            0x10000 + volcano_vibration_flags::VIBRATION
-        };
-        self.peripheral
-            .write(&ch, &raw.to_le_bytes(), WriteType::WithoutResponse)
-            .await?;
+        let raw: u32 =
+            if on { volcano_vibration_flags::VIBRATION } else { 0x10000 + volcano_vibration_flags::VIBRATION };
+        self.peripheral.write(&ch, &raw.to_le_bytes(), WriteType::WithoutResponse).await?;
         debug!("Volcano vibration set to {on}");
         Ok(())
     }
@@ -290,9 +264,7 @@ impl VaporizerControl for VolcanoHybrid {
     async fn set_shutoff_time(&self, seconds: u16) -> Result<(), StorzError> {
         let ch = self.characteristic(VOLCANO_SHUTOFF_TIME).await?;
         let raw = seconds.to_le_bytes();
-        self.peripheral
-            .write(&ch, &raw, WriteType::WithoutResponse)
-            .await?;
+        self.peripheral.write(&ch, &raw, WriteType::WithoutResponse).await?;
         debug!("Volcano shutoff time set to {seconds}s");
         Ok(())
     }
@@ -300,14 +272,9 @@ impl VaporizerControl for VolcanoHybrid {
     async fn set_temperature_unit(&self, celsius: bool) -> Result<(), StorzError> {
         let ch = self.characteristic(VOLCANO_DISPLAY).await?;
         // Register-mask write: low 16 bits select the FAHRENHEIT_ENA flag, bit 16 clears instead of sets, so celsius=true clears the flag.
-        let raw: u32 = if celsius {
-            0x10000 + volcano_flags::FAHRENHEIT_ENA as u32
-        } else {
-            volcano_flags::FAHRENHEIT_ENA as u32
-        };
-        self.peripheral
-            .write(&ch, &raw.to_le_bytes(), WriteType::WithoutResponse)
-            .await?;
+        let raw: u32 =
+            if celsius { 0x10000 + volcano_flags::FAHRENHEIT_ENA as u32 } else { volcano_flags::FAHRENHEIT_ENA as u32 };
+        self.peripheral.write(&ch, &raw.to_le_bytes(), WriteType::WithoutResponse).await?;
         debug!("Volcano temperature unit set to celsius={celsius}");
         Ok(())
     }
@@ -319,9 +286,7 @@ impl VaporizerControl for VolcanoHybrid {
         } else {
             0x10000 + volcano_flags::DISPLAY_ON_COOLING as u32
         };
-        self.peripheral
-            .write(&ch, &raw.to_le_bytes(), WriteType::WithoutResponse)
-            .await?;
+        self.peripheral.write(&ch, &raw.to_le_bytes(), WriteType::WithoutResponse).await?;
         debug!("Volcano display-on-cooling set to {on}");
         Ok(())
     }

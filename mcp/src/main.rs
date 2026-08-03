@@ -22,10 +22,7 @@ struct DeviceManager {
 
 impl DeviceManager {
     fn new(filter: Option<String>) -> Self {
-        Self {
-            device: Mutex::new(None),
-            filter,
-        }
+        Self { device: Mutex::new(None), filter }
     }
 
     async fn get(&self) -> Result<Arc<dyn VaporizerControl>, McpError> {
@@ -40,21 +37,14 @@ impl DeviceManager {
             *guard = None;
         }
 
-        let adapter = get_adapter()
-            .await
-            .map_err(|e| McpError::internal_error(format!("no BLE adapter: {e}"), None))?;
-        let peripheral = discover_first(&adapter, Duration::from_secs(20), self.filter.as_deref())
-            .await
-            .map_err(|e| {
-                McpError::internal_error(
-                    format!("no Storz & Bickel device found (is it powered on?): {e}"),
-                    None,
-                )
+        let adapter =
+            get_adapter().await.map_err(|e| McpError::internal_error(format!("no BLE adapter: {e}"), None))?;
+        let peripheral =
+            discover_first(&adapter, Duration::from_secs(20), self.filter.as_deref()).await.map_err(|e| {
+                McpError::internal_error(format!("no Storz & Bickel device found (is it powered on?): {e}"), None)
             })?;
         let device: Arc<dyn VaporizerControl> = Arc::from(
-            connect(peripheral)
-                .await
-                .map_err(|e| McpError::internal_error(format!("connect failed: {e}"), None))?,
+            connect(peripheral).await.map_err(|e| McpError::internal_error(format!("connect failed: {e}"), None))?,
         );
         *guard = Some(device.clone());
         Ok(device)
@@ -125,12 +115,12 @@ fn err(e: impl std::fmt::Display) -> McpError {
 #[tool_router]
 impl VolcanoServer {
     fn new(filter: Option<String>) -> Self {
-        Self {
-            manager: Arc::new(DeviceManager::new(filter)),
-        }
+        Self { manager: Arc::new(DeviceManager::new(filter)) }
     }
 
-    #[tool(description = "Get the vaporizer's current state: model, current/target temperature, heater and pump status. Connects to the device if not yet connected.")]
+    #[tool(
+        description = "Get the vaporizer's current state: model, current/target temperature, heater and pump status. Connects to the device if not yet connected."
+    )]
     async fn status(&self) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
         let current = device.get_current_temperature().await.ok();
@@ -150,20 +140,14 @@ impl VolcanoServer {
     }
 
     #[tool(description = "Set the target temperature in degrees Celsius.")]
-    async fn set_temperature(
-        &self,
-        Parameters(args): Parameters<TemperatureArgs>,
-    ) -> Result<CallToolResult, McpError> {
+    async fn set_temperature(&self, Parameters(args): Parameters<TemperatureArgs>) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
         device.set_target_temperature(args.celsius).await.map_err(err)?;
         Ok(ok(format!("target set to {:.1}°C", args.celsius)))
     }
 
     #[tool(description = "Turn the heater on or off.")]
-    async fn heater(
-        &self,
-        Parameters(args): Parameters<SwitchArgs>,
-    ) -> Result<CallToolResult, McpError> {
+    async fn heater(&self, Parameters(args): Parameters<SwitchArgs>) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
         if args.on {
             device.heater_on().await.map_err(err)?;
@@ -174,10 +158,7 @@ impl VolcanoServer {
     }
 
     #[tool(description = "Turn the air pump on or off (Volcano Hybrid only).")]
-    async fn pump(
-        &self,
-        Parameters(args): Parameters<SwitchArgs>,
-    ) -> Result<CallToolResult, McpError> {
+    async fn pump(&self, Parameters(args): Parameters<SwitchArgs>) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
         if args.on {
             device.pump_on().await.map_err(err)?;
@@ -188,10 +169,7 @@ impl VolcanoServer {
     }
 
     #[tool(description = "Run the pump for a fixed number of seconds (e.g. to fill a balloon bag), then stop it.")]
-    async fn fill_bag(
-        &self,
-        Parameters(args): Parameters<FillArgs>,
-    ) -> Result<CallToolResult, McpError> {
+    async fn fill_bag(&self, Parameters(args): Parameters<FillArgs>) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
         device.pump_on().await.map_err(err)?;
         tokio::time::sleep(Duration::from_secs(args.seconds)).await;
@@ -199,7 +177,9 @@ impl VolcanoServer {
         Ok(ok(format!("pumped for {}s", args.seconds)))
     }
 
-    #[tool(description = "Block until the device reaches a temperature (defaults to its current target, within 1°C). Returns the reached temperature or times out.")]
+    #[tool(
+        description = "Block until the device reaches a temperature (defaults to its current target, within 1°C). Returns the reached temperature or times out."
+    )]
     async fn wait_for_temperature(
         &self,
         Parameters(args): Parameters<WaitTempArgs>,
@@ -225,11 +205,10 @@ impl VolcanoServer {
         Ok(ok(format!("reached {reached:.1}°C")))
     }
 
-    #[tool(description = "Run a multi-step session workflow: each step heats to a temperature, holds, then pumps. Blocks until all steps complete.")]
-    async fn run_workflow(
-        &self,
-        Parameters(args): Parameters<WorkflowArgs>,
-    ) -> Result<CallToolResult, McpError> {
+    #[tool(
+        description = "Run a multi-step session workflow: each step heats to a temperature, holds, then pumps. Blocks until all steps complete."
+    )]
+    async fn run_workflow(&self, Parameters(args): Parameters<WorkflowArgs>) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
         let mut workflow = Workflow::new("mcp");
         for step in args.steps {
@@ -253,10 +232,7 @@ impl VolcanoServer {
     }
 
     #[tool(description = "Set display brightness (0-100).")]
-    async fn set_brightness(
-        &self,
-        Parameters(args): Parameters<BrightnessArgs>,
-    ) -> Result<CallToolResult, McpError> {
+    async fn set_brightness(&self, Parameters(args): Parameters<BrightnessArgs>) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
         device.set_brightness(args.value).await.map_err(err)?;
         Ok(ok(format!("brightness {}", args.value)))

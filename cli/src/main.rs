@@ -82,13 +82,9 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let adapter = get_adapter().await.context("no BLE adapter")?;
-    let peripheral = discover_first(
-        &adapter,
-        Duration::from_secs(cli.timeout),
-        cli.device.as_deref(),
-    )
-    .await
-    .context("no Storz & Bickel device found (is it powered on?)")?;
+    let peripheral = discover_first(&adapter, Duration::from_secs(cli.timeout), cli.device.as_deref())
+        .await
+        .context("no Storz & Bickel device found (is it powered on?)")?;
     let device = connect(peripheral).await.context("connect failed")?;
 
     run(&cli, device.as_ref()).await
@@ -199,10 +195,7 @@ async fn run(cli: &Cli, device: &dyn VaporizerControl) -> Result<()> {
         }
         Command::Workflow { steps } => {
             let workflow = parse_workflow(steps)?;
-            println!(
-                "running workflow: {} step(s)",
-                workflow.steps.len()
-            );
+            println!("running workflow: {} step(s)", workflow.steps.len());
             let runner = WorkflowRunner::new();
             runner.run(device, &workflow).await?;
             println!("workflow complete");
