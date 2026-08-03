@@ -12,7 +12,7 @@ name = "volcano-mcp"
 path = "src/main.rs"
 
 [dependencies]
-storz-rs = { workspace = true, features = ["serde"] }
+storz-rs = { workspace = true, features = ["serde", "client"] }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

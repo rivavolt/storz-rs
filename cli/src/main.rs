@@ -16,6 +16,10 @@ struct Cli {
     #[arg(short, long, global = true, default_value_t = 15)]
     timeout: u64,
 
+    /// Route through a volcano-daemon instead of connecting over BLE directly, e.g. http://watts:8814
+    #[arg(long, global = true, env = "VOLCANO_DAEMON")]
+    daemon: Option<String>,
+
     /// JSON output where applicable
     #[arg(long, global = true)]
     json: bool,
@@ -87,11 +91,16 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    let adapter = get_adapter().await.context("no BLE adapter")?;
-    let peripheral = discover_first(&adapter, Duration::from_secs(cli.timeout), cli.device.as_deref())
-        .await
-        .context("no Storz & Bickel device found (is it powered on?)")?;
-    let device = connect(peripheral).await.context("connect failed")?;
+    let device: Box<dyn VaporizerControl> = match &cli.daemon {
+        Some(url) => Box::new(storz_rs::HttpDevice::connect(url).await.context("daemon connect failed")?),
+        None => {
+            let adapter = get_adapter().await.context("no BLE adapter")?;
+            let peripheral = discover_first(&adapter, Duration::from_secs(cli.timeout), cli.device.as_deref())
+                .await
+                .context("no Storz & Bickel device found (is it powered on?)")?;
+            connect(peripheral).await.context("connect failed")?
+        }
+    };
 
     run(&cli, device.as_ref()).await
 }

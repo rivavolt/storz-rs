@@ -1,0 +1,52 @@
+//! Auto-reconnecting device handle.
+//!
+//! [`DeviceManager`] lazily establishes the BLE connection on first use and re-establishes it transparently when it drops, so long-lived processes (daemons, MCP servers) can treat the device as always-available.
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::sync::Mutex;
+use tracing::info;
+
+use crate::error::StorzError;
+use crate::protocol::VaporizerControl;
+use crate::{connect, discover_first, get_adapter};
+
+/// Lazily-connected, auto-reconnecting handle to a vaporizer.
+pub struct DeviceManager {
+    device: Mutex<Option<Arc<dyn VaporizerControl>>>,
+    filter: Option<String>,
+    scan_timeout: Duration,
+}
+
+impl DeviceManager {
+    /// `filter` narrows discovery by device name substring or BLE address.
+    pub fn new(filter: Option<String>) -> Self {
+        Self { device: Mutex::new(None), filter, scan_timeout: Duration::from_secs(20) }
+    }
+
+    pub fn with_scan_timeout(mut self, timeout: Duration) -> Self {
+        self.scan_timeout = timeout;
+        self
+    }
+
+    /// Get the connected device, connecting or reconnecting as needed.
+    pub async fn get(&self) -> Result<Arc<dyn VaporizerControl>, StorzError> {
+        let mut guard = self.device.lock().await;
+
+        if let Some(device) = guard.as_ref() {
+            // A cheap read doubles as a liveness probe; on failure fall through to reconnect.
+            if device.get_current_temperature().await.is_ok() {
+                return Ok(device.clone());
+            }
+            info!("device unresponsive, reconnecting");
+            *guard = None;
+        }
+
+        let adapter = get_adapter().await?;
+        let peripheral = discover_first(&adapter, self.scan_timeout, self.filter.as_deref()).await?;
+        let device: Arc<dyn VaporizerControl> = Arc::from(connect(peripheral).await?);
+        *guard = Some(device.clone());
+        Ok(device)
+    }
+}

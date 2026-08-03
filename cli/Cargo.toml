@@ -12,11 +12,11 @@ name = "volcano"
 path = "src/main.rs"
 
 [dependencies]
-storz-rs = { workspace = true, features = ["serde"] }
+storz-rs = { workspace = true, features = ["serde", "client"] }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 futures = { workspace = true }
 tracing-subscriber = { workspace = true }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }

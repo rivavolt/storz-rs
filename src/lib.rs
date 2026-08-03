@@ -50,6 +50,9 @@
 pub mod device;
 pub mod discovery;
 pub mod error;
+#[cfg(feature = "client")]
+pub mod http_client;
+pub mod manager;
 pub mod protocol;
 pub mod utils;
 pub mod uuids;
@@ -58,6 +61,9 @@ pub mod workflow;
 pub use device::{DeviceInfo, DeviceModel, DeviceState, HeaterMode};
 pub use discovery::{discover_first, discover_vaporizers, get_adapter, select_peripheral};
 pub use error::StorzError;
+#[cfg(feature = "client")]
+pub use http_client::HttpDevice;
+pub use manager::DeviceManager;
 pub use protocol::{Crafty, VaporizerControl, Venty, VolcanoHybrid};
 pub use workflow::{Workflow, WorkflowRunner, WorkflowState, WorkflowStep};
 

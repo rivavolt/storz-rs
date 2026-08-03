@@ -10,44 +10,41 @@ use rmcp::{
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
-use storz_rs::{VaporizerControl, Workflow, WorkflowRunner, WorkflowStep, connect, discover_first, get_adapter};
+use storz_rs::{HttpDevice, Workflow, WorkflowRunner, WorkflowStep, VaporizerControl};
 use tokio::sync::Mutex;
-use tracing::info;
 
-/// Lazily-connected device handle. The BLE link is established on first tool call and re-established transparently if it drops.
+/// Device access: either the lib's auto-reconnecting BLE manager, or a remote volcano-daemon holding the connection (VOLCANO_DAEMON).
+enum Backend {
+    Ble(storz_rs::DeviceManager),
+    Daemon { url: String, cached: Mutex<Option<Arc<HttpDevice>>> },
+}
+
 struct DeviceManager {
-    device: Mutex<Option<Arc<dyn VaporizerControl>>>,
-    filter: Option<String>,
+    backend: Backend,
 }
 
 impl DeviceManager {
-    fn new(filter: Option<String>) -> Self {
-        Self { device: Mutex::new(None), filter }
+    fn new(filter: Option<String>, daemon: Option<String>) -> Self {
+        let backend = match daemon {
+            Some(url) => Backend::Daemon { url, cached: Mutex::new(None) },
+            None => Backend::Ble(storz_rs::DeviceManager::new(filter)),
+        };
+        Self { backend }
     }
 
     async fn get(&self) -> Result<Arc<dyn VaporizerControl>, McpError> {
-        let mut guard = self.device.lock().await;
-
-        if let Some(device) = guard.as_ref() {
-            // A cheap read doubles as a liveness probe; on failure fall through to reconnect.
-            if device.get_current_temperature().await.is_ok() {
-                return Ok(device.clone());
+        match &self.backend {
+            Backend::Ble(manager) => Ok(manager.get().await.map_err(err)?),
+            Backend::Daemon { url, cached } => {
+                let mut guard = cached.lock().await;
+                if let Some(device) = guard.as_ref() {
+                    return Ok(device.clone());
+                }
+                let device = Arc::new(HttpDevice::connect(url).await.map_err(err)?);
+                *guard = Some(device.clone());
+                Ok(device)
             }
-            info!("device unresponsive, reconnecting");
-            *guard = None;
         }
-
-        let adapter =
-            get_adapter().await.map_err(|e| McpError::internal_error(format!("no BLE adapter: {e}"), None))?;
-        let peripheral =
-            discover_first(&adapter, Duration::from_secs(20), self.filter.as_deref()).await.map_err(|e| {
-                McpError::internal_error(format!("no Storz & Bickel device found (is it powered on?): {e}"), None)
-            })?;
-        let device: Arc<dyn VaporizerControl> = Arc::from(
-            connect(peripheral).await.map_err(|e| McpError::internal_error(format!("connect failed: {e}"), None))?,
-        );
-        *guard = Some(device.clone());
-        Ok(device)
     }
 }
 
@@ -118,8 +115,8 @@ fn err(e: impl std::fmt::Display) -> McpError {
 
 #[tool_router]
 impl VolcanoServer {
-    fn new(filter: Option<String>) -> Self {
-        Self { manager: Arc::new(DeviceManager::new(filter)) }
+    fn new(filter: Option<String>, daemon: Option<String>) -> Self {
+        Self { manager: Arc::new(DeviceManager::new(filter, daemon)) }
     }
 
     #[tool(
@@ -279,8 +276,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Optional device name/address filter, e.g. `volcano-mcp VOLCANO` or VOLCANO_DEVICE env.
     let filter = std::env::args().nth(1).or_else(|| std::env::var("VOLCANO_DEVICE").ok());
+    let daemon = std::env::var("VOLCANO_DAEMON").ok();
 
-    let service = VolcanoServer::new(filter).serve(stdio()).await?;
+    let service = VolcanoServer::new(filter, daemon).serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
 }

@@ -19,4 +19,7 @@ pub enum StorzError {
 
     #[error("Not connected to device")]
     NotConnected,
+
+    #[error("{0}")]
+    Other(String),
 }
