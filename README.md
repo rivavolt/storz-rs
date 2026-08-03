@@ -9,6 +9,13 @@
 
 A Rust library for controlling Storz & Bickel vaporizers over BLE. Built on [btleplug](https://github.com/deviceplug/btleplug) for cross-platform support. Protocol reverse-engineered from [reactive-volcano-app](https://github.com/firsttris/reactive-volcano-app).
 
+> This fork ([rivavolt/storz-rs](https://github.com/rivavolt/storz-rs)) restructures the repo as a workspace and adds two binaries on top of the upstream library:
+>
+> - **`cli/`** — the `volcano` CLI: `volcano status`, `volcano temp 185`, `volcano heat on`, `volcano fill 8`, `volcano watch --json`, `volcano workflow "185:60:8,195:45:8"`, …
+> - **`mcp/`** — the `volcano-mcp` MCP server (stdio, [rmcp](https://crates.io/crates/rmcp)): exposes `status`, `set_temperature`, `heater`, `pump`, `fill_bag`, `wait_for_temperature`, `run_workflow`, `device_info`, `set_brightness` as tools, holding one lazily-established, auto-reconnecting BLE session.
+>
+> Library additions: `discover_first()` (event-driven scan that returns on first match instead of sleeping out the scan window), `set_temperature_unit` on the Volcano Hybrid, and optional `serde` derives behind the `serde` feature.
+
 ![Storz & Bickel devices](docs/devices.png)
 
 ## Supported Devices
