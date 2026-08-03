@@ -123,12 +123,16 @@ impl VolcanoServer {
     )]
     async fn status(&self) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
-        let current = device.get_current_temperature().await.ok();
-        let target = device.get_target_temperature().await.ok();
-        tokio::time::sleep(Duration::from_millis(300)).await;
         let mut state = device.get_state().await.map_err(err)?;
-        state.current_temp = current.or(state.current_temp);
-        state.target_temp = target.or(state.target_temp);
+        // Notifications keep the state fresh on a held connection; explicit reads are only needed right after connect, before the first notification lands.
+        if state.current_temp.is_none() || state.target_temp.is_none() {
+            state.current_temp = device.get_current_temperature().await.ok().or(state.current_temp);
+            state.target_temp = device.get_target_temperature().await.ok().or(state.target_temp);
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            let refreshed = device.get_state().await.map_err(err)?;
+            state.heater_on = refreshed.heater_on;
+            state.pump_on = refreshed.pump_on;
+        }
         let json = serde_json::json!({
             "model": device.device_model().to_string(),
             "current_temp_c": state.current_temp,
