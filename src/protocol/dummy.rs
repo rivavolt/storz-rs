@@ -246,11 +246,7 @@ impl VaporizerControl for DummyDevice {
         let mut state = self.state.lock().await;
         state.heater_mode = Some(mode);
         state.heater_on = mode != HeaterMode::Off;
-        if mode != HeaterMode::Off {
-            *self.heater.write().await = true;
-        } else {
-            *self.heater.write().await = false;
-        }
+        *self.heater.write().await = mode != HeaterMode::Off;
         Ok(())
     }
 
