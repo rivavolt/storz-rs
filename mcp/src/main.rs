@@ -276,7 +276,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Optional device name/address filter, e.g. `volcano-mcp VOLCANO` or VOLCANO_DEVICE env.
     let filter = std::env::args().nth(1).or_else(|| std::env::var("VOLCANO_DEVICE").ok());
-    let daemon = std::env::var("VOLCANO_DAEMON").ok();
+    let daemon = std::env::var("VOLCANO_DAEMON").ok().filter(|s| !s.is_empty());
 
     let service = VolcanoServer::new(filter, daemon).serve(stdio()).await?;
     service.waiting().await?;
