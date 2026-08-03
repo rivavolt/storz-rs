@@ -1,7 +1,8 @@
 use std::time::Duration;
 
-use btleplug::api::{Central, Manager as _, Peripheral as _, ScanFilter};
+use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Manager, Peripheral};
+use futures::StreamExt;
 use tokio::time;
 use tracing::{debug, info, warn};
 
@@ -67,6 +68,64 @@ pub async fn discover_vaporizers(
     }
 
     Ok(found)
+}
+
+/// Scan until the first matching Storz & Bickel device appears, returning it immediately instead of waiting out the full scan window. `filter` further narrows by substring match on the advertised name or the peripheral address.
+pub async fn discover_first(
+    adapter: &Adapter,
+    timeout: Duration,
+    filter: Option<&str>,
+) -> Result<Peripheral, StorzError> {
+    let matches = |name: &str, address: &str| {
+        DEVICE_NAME_PREFIXES.iter().any(|p| name.contains(p))
+            && filter.is_none_or(|f| {
+                name.to_lowercase().contains(&f.to_lowercase())
+                    || address.to_lowercase() == f.to_lowercase()
+            })
+    };
+
+    let mut events = adapter.events().await?;
+    adapter.start_scan(ScanFilter::default()).await?;
+
+    let check = |id: btleplug::platform::PeripheralId| {
+        let adapter = adapter.clone();
+        async move {
+            let p = adapter.peripheral(&id).await.ok()?;
+            let props = p.properties().await.ok().flatten()?;
+            let name = props.local_name.as_deref().unwrap_or("");
+            if matches(name, &p.address().to_string()) {
+                info!("Found device: {name}");
+                Some(p)
+            } else {
+                None
+            }
+        }
+    };
+
+    let result = time::timeout(timeout, async {
+        // Devices already known to the adapter don't re-emit DeviceDiscovered, so sweep the cache first.
+        for p in adapter.peripherals().await.unwrap_or_default() {
+            if let Some(found) = check(p.id()).await {
+                return Some(found);
+            }
+        }
+        while let Some(event) = events.next().await {
+            if let CentralEvent::DeviceDiscovered(id) | CentralEvent::DeviceUpdated(id) = event {
+                if let Some(found) = check(id).await {
+                    return Some(found);
+                }
+            }
+        }
+        None
+    })
+    .await;
+
+    adapter.stop_scan().await.ok();
+    match result {
+        Ok(Some(p)) => Ok(p),
+        Ok(None) => Err(StorzError::DeviceNotFound),
+        Err(_) => Err(StorzError::DeviceNotFound),
+    }
 }
 
 /// Obtain the default BLE adapter.
