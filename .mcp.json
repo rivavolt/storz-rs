@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "volcano": {
+      "type": "stdio",
+      "command": "target/release/volcano-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
