@@ -65,8 +65,12 @@ struct SwitchArgs {
 
 #[derive(Deserialize, JsonSchema)]
 struct FillArgs {
-    /// How long to run the pump, in seconds
+    /// Total pump time in seconds
     seconds: u64,
+    /// Pulse mode: pump in bursts of this many seconds so the chamber reheats between them (denser vapor)
+    pulse_seconds: Option<u64>,
+    /// Pause between pulses in seconds (default 10, only with pulse_seconds)
+    rest_seconds: Option<u64>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -172,13 +176,25 @@ impl VolcanoServer {
         Ok(ok(format!("pump {}", if args.on { "on" } else { "off" })))
     }
 
-    #[tool(description = "Run the pump for a fixed number of seconds (e.g. to fill a balloon bag), then stop it.")]
+    #[tool(
+        description = "Run the pump to fill a balloon bag: either one continuous run of `seconds`, or with pulse_seconds set, bursts with reheat pauses until `seconds` of total pump time."
+    )]
     async fn fill_bag(&self, Parameters(args): Parameters<FillArgs>) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
-        device.pump_on().await.map_err(err)?;
-        tokio::time::sleep(Duration::from_secs(args.seconds)).await;
-        device.pump_off().await.map_err(err)?;
-        Ok(ok(format!("pumped for {}s", args.seconds)))
+        let pulse = args.pulse_seconds.unwrap_or(args.seconds).max(1);
+        let rest = args.rest_seconds.unwrap_or(10);
+        let mut pumped = 0;
+        while pumped < args.seconds {
+            if pumped > 0 {
+                tokio::time::sleep(Duration::from_secs(rest)).await;
+            }
+            let burst = pulse.min(args.seconds - pumped);
+            device.pump_on().await.map_err(err)?;
+            tokio::time::sleep(Duration::from_secs(burst)).await;
+            device.pump_off().await.map_err(err)?;
+            pumped += burst;
+        }
+        Ok(ok(format!("pumped for {}s total", args.seconds)))
     }
 
     #[tool(

@@ -42,8 +42,14 @@ enum Command {
     },
     /// Run the pump for a fixed duration, e.g. to fill a bag
     Fill {
-        /// Pump duration in seconds
+        /// Total pump duration in seconds
         seconds: u64,
+        /// Pulse mode: pump in bursts of this many seconds, pausing between them so the chamber reheats
+        #[arg(long)]
+        pulse: Option<u64>,
+        /// Pause between pulses in seconds
+        #[arg(long, default_value_t = 10, requires = "pulse")]
+        rest: u64,
     },
     /// Stream live state updates until interrupted
     Watch,
@@ -140,11 +146,26 @@ async fn run(cli: &Cli, device: &dyn VaporizerControl) -> Result<()> {
             }
             println!("pump {state}");
         }
-        Command::Fill { seconds } => {
+        Command::Fill { seconds, pulse: None, .. } => {
             device.pump_on().await?;
             tokio::time::sleep(Duration::from_secs(*seconds)).await;
             device.pump_off().await?;
             println!("pumped for {seconds}s");
+        }
+        Command::Fill { seconds, pulse: Some(pulse), rest } => {
+            let pulse = (*pulse).max(1);
+            let mut pumped = 0;
+            while pumped < *seconds {
+                if pumped > 0 {
+                    tokio::time::sleep(Duration::from_secs(*rest)).await;
+                }
+                let burst = pulse.min(*seconds - pumped);
+                device.pump_on().await?;
+                tokio::time::sleep(Duration::from_secs(burst)).await;
+                device.pump_off().await?;
+                pumped += burst;
+                println!("{pumped}/{seconds}s");
+            }
         }
         Command::Watch => {
             let mut stream = device.subscribe_state().await?;
