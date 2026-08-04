@@ -20,10 +20,14 @@
             src = self;
             cargoLock.lockFile = ./Cargo.lock;
             cargoBuildFlags = [ "--workspace" ];
-            nativeBuildInputs = with pkgs; [ pkg-config ];
+            nativeBuildInputs = with pkgs; [ pkg-config installShellFiles ];
             buildInputs = with pkgs; [ dbus ];
             # The workspace's own tests only; doctests hit the network-free sandbox fine but BLE integration is hardware-only anyway.
             doCheck = false;
+            # Only volcano carries the CompleteEnv hook; COMPLETE=zsh against the other bins would run them for real.
+            postInstall = ''
+              installShellCompletion --cmd volcano --zsh <(COMPLETE=zsh "$out/bin/volcano")
+            '';
             meta = {
               description = "Control Storz & Bickel vaporizers (Volcano Hybrid, Venty, Crafty) over BLE";
               license = pkgs.lib.licenses.mit;

@@ -80,6 +80,9 @@ enum Command {
         /// Temperature to wait for; defaults to the device's target
         celsius: Option<f32>,
     },
+    /// Emit shell completions on stdout
+    #[command(hide = true)]
+    Completions { shell: clap_complete::Shell },
 }
 
 #[tokio::main]
@@ -89,7 +92,19 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
+    {
+        use clap::CommandFactory;
+        clap_complete::CompleteEnv::with_factory(Cli::command).complete();
+    }
+
     let cli = Cli::parse();
+
+    // Completions run before any device connect, so a powered-off vaporizer never breaks shell startup.
+    if let Command::Completions { shell } = cli.command {
+        use clap::CommandFactory;
+        clap_complete::generate(shell, &mut Cli::command(), "volcano", &mut std::io::stdout());
+        return Ok(());
+    }
 
     let device: Box<dyn VaporizerControl> = match &cli.daemon {
         Some(url) => Box::new(storz_rs::HttpDevice::connect(url).await.context("daemon connect failed")?),
@@ -249,6 +264,7 @@ async fn run(cli: &Cli, device: &dyn VaporizerControl) -> Result<()> {
                 }
             }
         }
+        Command::Completions { .. } => unreachable!("handled before device connect"),
     }
     Ok(())
 }
