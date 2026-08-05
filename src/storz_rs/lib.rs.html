@@ -98,76 +98,79 @@
 <a href=#98 id=98 data-nosnippet>98</a>    </span><span class="kw">let </span>services = peripheral.services();
 <a href=#99 id=99 data-nosnippet>99</a>    <span class="kw">let </span>service_uuids: Vec&lt;<span class="kw">_</span>&gt; = services.iter().map(|s| s.uuid).collect();
 <a href=#100 id=100 data-nosnippet>100</a>
-<a href=#101 id=101 data-nosnippet>101</a>    <span class="kw">if </span>service_uuids.contains(<span class="kw-2">&amp;</span>uuids::VOLCANO_SERVICE_STATE) || service_uuids.contains(<span class="kw-2">&amp;</span>uuids::VOLCANO_SERVICE_CONTROL)
-<a href=#102 id=102 data-nosnippet>102</a>    {
-<a href=#103 id=103 data-nosnippet>103</a>        <span class="kw">return </span><span class="prelude-val">Some</span>(DeviceModel::VolcanoHybrid);
-<a href=#104 id=104 data-nosnippet>104</a>    }
-<a href=#105 id=105 data-nosnippet>105</a>    <span class="kw">if </span>service_uuids.contains(<span class="kw-2">&amp;</span>uuids::VENTY_SERVICE_PRIMARY) {
-<a href=#106 id=106 data-nosnippet>106</a>        <span class="kw">return </span><span class="prelude-val">Some</span>(DeviceModel::Venty);
-<a href=#107 id=107 data-nosnippet>107</a>    }
-<a href=#108 id=108 data-nosnippet>108</a>    <span class="kw">if </span>service_uuids.contains(<span class="kw-2">&amp;</span>uuids::CRAFTY_SERVICE_1)
-<a href=#109 id=109 data-nosnippet>109</a>        || service_uuids.contains(<span class="kw-2">&amp;</span>uuids::CRAFTY_SERVICE_2)
-<a href=#110 id=110 data-nosnippet>110</a>        || service_uuids.contains(<span class="kw-2">&amp;</span>uuids::CRAFTY_SERVICE_3)
-<a href=#111 id=111 data-nosnippet>111</a>    {
-<a href=#112 id=112 data-nosnippet>112</a>        <span class="kw">return </span><span class="prelude-val">Some</span>(DeviceModel::Crafty);
-<a href=#113 id=113 data-nosnippet>113</a>    }
-<a href=#114 id=114 data-nosnippet>114</a>
-<a href=#115 id=115 data-nosnippet>115</a>    <span class="prelude-val">None
-<a href=#116 id=116 data-nosnippet>116</a></span>}
-<a href=#117 id=117 data-nosnippet>117</a>
-<a href=#118 id=118 data-nosnippet>118</a><span class="doccomment">/// Connect to a discovered peripheral and return a trait-object controller.
-<a href=#119 id=119 data-nosnippet>119</a>///
-<a href=#120 id=120 data-nosnippet>120</a>/// This function:
-<a href=#121 id=121 data-nosnippet>121</a>/// 1. Establishes a BLE connection
-<a href=#122 id=122 data-nosnippet>122</a>/// 2. Discovers GATT services
-<a href=#123 id=123 data-nosnippet>123</a>/// 3. Auto-detects the device model
-<a href=#124 id=124 data-nosnippet>124</a>/// 4. Returns the appropriate protocol implementation
-<a href=#125 id=125 data-nosnippet>125</a>/// 5. For Venty/Veazy: runs the init sequence automatically
-<a href=#126 id=126 data-nosnippet>126</a></span><span class="kw">pub async fn </span>connect(peripheral: Peripheral) -&gt; <span class="prelude-ty">Result</span>&lt;Box&lt;<span class="kw">dyn </span>VaporizerControl&gt;, StorzError&gt; {
-<a href=#127 id=127 data-nosnippet>127</a>    <span class="macro">info!</span>(<span class="string">"Connecting to peripheral…"</span>);
-<a href=#128 id=128 data-nosnippet>128</a>    peripheral.connect().<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#129 id=129 data-nosnippet>129</a>    peripheral.discover_services().<span class="kw">await</span><span class="question-mark">?</span>;
-<a href=#130 id=130 data-nosnippet>130</a>    <span class="macro">debug!</span>(<span class="string">"Services discovered"</span>);
-<a href=#131 id=131 data-nosnippet>131</a>
-<a href=#132 id=132 data-nosnippet>132</a>    <span class="kw">let </span>model = detect_model(<span class="kw-2">&amp;</span>peripheral).<span class="kw">await</span>.unwrap_or_else(|| {
-<a href=#133 id=133 data-nosnippet>133</a>        <span class="macro">debug!</span>(<span class="string">"Could not auto-detect model, defaulting to Venty"</span>);
-<a href=#134 id=134 data-nosnippet>134</a>        DeviceModel::Venty
-<a href=#135 id=135 data-nosnippet>135</a>    });
-<a href=#136 id=136 data-nosnippet>136</a>    <span class="macro">info!</span>(<span class="string">"Detected device model: {model}"</span>);
-<a href=#137 id=137 data-nosnippet>137</a>
-<a href=#138 id=138 data-nosnippet>138</a>    <span class="kw">let </span>controller: Box&lt;<span class="kw">dyn </span>VaporizerControl&gt; = <span class="kw">match </span>model {
-<a href=#139 id=139 data-nosnippet>139</a>        DeviceModel::VolcanoHybrid =&gt; Box::new(VolcanoHybrid::new(peripheral).<span class="kw">await</span><span class="question-mark">?</span>),
-<a href=#140 id=140 data-nosnippet>140</a>        DeviceModel::Venty | DeviceModel::Veazy =&gt; Box::new(Venty::new(peripheral, model).<span class="kw">await</span><span class="question-mark">?</span>),
-<a href=#141 id=141 data-nosnippet>141</a>        DeviceModel::Crafty =&gt; Box::new(Crafty::new(peripheral).<span class="kw">await</span><span class="question-mark">?</span>),
-<a href=#142 id=142 data-nosnippet>142</a>    };
-<a href=#143 id=143 data-nosnippet>143</a>
-<a href=#144 id=144 data-nosnippet>144</a>    <span class="prelude-val">Ok</span>(controller)
-<a href=#145 id=145 data-nosnippet>145</a>}
-<a href=#146 id=146 data-nosnippet>146</a>
-<a href=#147 id=147 data-nosnippet>147</a><span class="doccomment">/// Connect to a peripheral with a timeout.
-<a href=#148 id=148 data-nosnippet>148</a>///
-<a href=#149 id=149 data-nosnippet>149</a>/// Same as [`connect`] but fails with [`StorzError::Timeout`] if the connection
-<a href=#150 id=150 data-nosnippet>150</a>/// or initialization takes longer than the specified duration.
-<a href=#151 id=151 data-nosnippet>151</a>///
-<a href=#152 id=152 data-nosnippet>152</a>/// # Example
-<a href=#153 id=153 data-nosnippet>153</a>///
-<a href=#154 id=154 data-nosnippet>154</a>/// ```no_run
-<a href=#155 id=155 data-nosnippet>155</a>/// use std::time::Duration;
-<a href=#156 id=156 data-nosnippet>156</a>/// use storz_rs::{discover_vaporizers, get_adapter, connect_with_timeout};
-<a href=#157 id=157 data-nosnippet>157</a>///
-<a href=#158 id=158 data-nosnippet>158</a>/// # async fn example() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
-<a href=#159 id=159 data-nosnippet>159</a>/// let adapter = get_adapter().await?;
-<a href=#160 id=160 data-nosnippet>160</a>/// let peripherals = discover_vaporizers(&amp;adapter, Duration::from_secs(10)).await?;
-<a href=#161 id=161 data-nosnippet>161</a>/// let peripheral = peripherals.into_iter().next().unwrap();
-<a href=#162 id=162 data-nosnippet>162</a>///
-<a href=#163 id=163 data-nosnippet>163</a>/// let device = connect_with_timeout(peripheral, Duration::from_secs(15)).await?;
-<a href=#164 id=164 data-nosnippet>164</a>/// # Ok(())
-<a href=#165 id=165 data-nosnippet>165</a>/// # }
-<a href=#166 id=166 data-nosnippet>166</a>/// ```
-<a href=#167 id=167 data-nosnippet>167</a></span><span class="kw">pub async fn </span>connect_with_timeout(
-<a href=#168 id=168 data-nosnippet>168</a>    peripheral: Peripheral,
-<a href=#169 id=169 data-nosnippet>169</a>    timeout: Duration,
-<a href=#170 id=170 data-nosnippet>170</a>) -&gt; <span class="prelude-ty">Result</span>&lt;Box&lt;<span class="kw">dyn </span>VaporizerControl&gt;, StorzError&gt; {
-<a href=#171 id=171 data-nosnippet>171</a>    tokio::time::timeout(timeout, connect(peripheral)).<span class="kw">await</span>.map_err(|<span class="kw">_</span>| StorzError::Timeout)<span class="question-mark">?
-<a href=#172 id=172 data-nosnippet>172</a></span>}
+<a href=#101 id=101 data-nosnippet>101</a>    <span class="kw">if </span>service_uuids.contains(<span class="kw-2">&amp;</span>uuids::VOLCANO_SERVICE_STATE)
+<a href=#102 id=102 data-nosnippet>102</a>        || service_uuids.contains(<span class="kw-2">&amp;</span>uuids::VOLCANO_SERVICE_CONTROL)
+<a href=#103 id=103 data-nosnippet>103</a>    {
+<a href=#104 id=104 data-nosnippet>104</a>        <span class="kw">return </span><span class="prelude-val">Some</span>(DeviceModel::VolcanoHybrid);
+<a href=#105 id=105 data-nosnippet>105</a>    }
+<a href=#106 id=106 data-nosnippet>106</a>    <span class="kw">if </span>service_uuids.contains(<span class="kw-2">&amp;</span>uuids::VENTY_SERVICE_PRIMARY) {
+<a href=#107 id=107 data-nosnippet>107</a>        <span class="kw">return </span><span class="prelude-val">Some</span>(DeviceModel::Venty);
+<a href=#108 id=108 data-nosnippet>108</a>    }
+<a href=#109 id=109 data-nosnippet>109</a>    <span class="kw">if </span>service_uuids.contains(<span class="kw-2">&amp;</span>uuids::CRAFTY_SERVICE_1)
+<a href=#110 id=110 data-nosnippet>110</a>        || service_uuids.contains(<span class="kw-2">&amp;</span>uuids::CRAFTY_SERVICE_2)
+<a href=#111 id=111 data-nosnippet>111</a>        || service_uuids.contains(<span class="kw-2">&amp;</span>uuids::CRAFTY_SERVICE_3)
+<a href=#112 id=112 data-nosnippet>112</a>    {
+<a href=#113 id=113 data-nosnippet>113</a>        <span class="kw">return </span><span class="prelude-val">Some</span>(DeviceModel::Crafty);
+<a href=#114 id=114 data-nosnippet>114</a>    }
+<a href=#115 id=115 data-nosnippet>115</a>
+<a href=#116 id=116 data-nosnippet>116</a>    <span class="prelude-val">None
+<a href=#117 id=117 data-nosnippet>117</a></span>}
+<a href=#118 id=118 data-nosnippet>118</a>
+<a href=#119 id=119 data-nosnippet>119</a><span class="doccomment">/// Connect to a discovered peripheral and return a trait-object controller.
+<a href=#120 id=120 data-nosnippet>120</a>///
+<a href=#121 id=121 data-nosnippet>121</a>/// This function:
+<a href=#122 id=122 data-nosnippet>122</a>/// 1. Establishes a BLE connection
+<a href=#123 id=123 data-nosnippet>123</a>/// 2. Discovers GATT services
+<a href=#124 id=124 data-nosnippet>124</a>/// 3. Auto-detects the device model
+<a href=#125 id=125 data-nosnippet>125</a>/// 4. Returns the appropriate protocol implementation
+<a href=#126 id=126 data-nosnippet>126</a>/// 5. For Venty/Veazy: runs the init sequence automatically
+<a href=#127 id=127 data-nosnippet>127</a></span><span class="kw">pub async fn </span>connect(peripheral: Peripheral) -&gt; <span class="prelude-ty">Result</span>&lt;Box&lt;<span class="kw">dyn </span>VaporizerControl&gt;, StorzError&gt; {
+<a href=#128 id=128 data-nosnippet>128</a>    <span class="macro">info!</span>(<span class="string">"Connecting to peripheral…"</span>);
+<a href=#129 id=129 data-nosnippet>129</a>    peripheral.connect().<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#130 id=130 data-nosnippet>130</a>    peripheral.discover_services().<span class="kw">await</span><span class="question-mark">?</span>;
+<a href=#131 id=131 data-nosnippet>131</a>    <span class="macro">debug!</span>(<span class="string">"Services discovered"</span>);
+<a href=#132 id=132 data-nosnippet>132</a>
+<a href=#133 id=133 data-nosnippet>133</a>    <span class="kw">let </span>model = detect_model(<span class="kw-2">&amp;</span>peripheral).<span class="kw">await</span>.unwrap_or_else(|| {
+<a href=#134 id=134 data-nosnippet>134</a>        <span class="macro">debug!</span>(<span class="string">"Could not auto-detect model, defaulting to Venty"</span>);
+<a href=#135 id=135 data-nosnippet>135</a>        DeviceModel::Venty
+<a href=#136 id=136 data-nosnippet>136</a>    });
+<a href=#137 id=137 data-nosnippet>137</a>    <span class="macro">info!</span>(<span class="string">"Detected device model: {model}"</span>);
+<a href=#138 id=138 data-nosnippet>138</a>
+<a href=#139 id=139 data-nosnippet>139</a>    <span class="kw">let </span>controller: Box&lt;<span class="kw">dyn </span>VaporizerControl&gt; = <span class="kw">match </span>model {
+<a href=#140 id=140 data-nosnippet>140</a>        DeviceModel::VolcanoHybrid =&gt; Box::new(VolcanoHybrid::new(peripheral).<span class="kw">await</span><span class="question-mark">?</span>),
+<a href=#141 id=141 data-nosnippet>141</a>        DeviceModel::Venty | DeviceModel::Veazy =&gt; Box::new(Venty::new(peripheral, model).<span class="kw">await</span><span class="question-mark">?</span>),
+<a href=#142 id=142 data-nosnippet>142</a>        DeviceModel::Crafty =&gt; Box::new(Crafty::new(peripheral).<span class="kw">await</span><span class="question-mark">?</span>),
+<a href=#143 id=143 data-nosnippet>143</a>    };
+<a href=#144 id=144 data-nosnippet>144</a>
+<a href=#145 id=145 data-nosnippet>145</a>    <span class="prelude-val">Ok</span>(controller)
+<a href=#146 id=146 data-nosnippet>146</a>}
+<a href=#147 id=147 data-nosnippet>147</a>
+<a href=#148 id=148 data-nosnippet>148</a><span class="doccomment">/// Connect to a peripheral with a timeout.
+<a href=#149 id=149 data-nosnippet>149</a>///
+<a href=#150 id=150 data-nosnippet>150</a>/// Same as [`connect`] but fails with [`StorzError::Timeout`] if the connection
+<a href=#151 id=151 data-nosnippet>151</a>/// or initialization takes longer than the specified duration.
+<a href=#152 id=152 data-nosnippet>152</a>///
+<a href=#153 id=153 data-nosnippet>153</a>/// # Example
+<a href=#154 id=154 data-nosnippet>154</a>///
+<a href=#155 id=155 data-nosnippet>155</a>/// ```no_run
+<a href=#156 id=156 data-nosnippet>156</a>/// use std::time::Duration;
+<a href=#157 id=157 data-nosnippet>157</a>/// use storz_rs::{discover_vaporizers, get_adapter, connect_with_timeout};
+<a href=#158 id=158 data-nosnippet>158</a>///
+<a href=#159 id=159 data-nosnippet>159</a>/// # async fn example() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+<a href=#160 id=160 data-nosnippet>160</a>/// let adapter = get_adapter().await?;
+<a href=#161 id=161 data-nosnippet>161</a>/// let peripherals = discover_vaporizers(&amp;adapter, Duration::from_secs(10)).await?;
+<a href=#162 id=162 data-nosnippet>162</a>/// let peripheral = peripherals.into_iter().next().unwrap();
+<a href=#163 id=163 data-nosnippet>163</a>///
+<a href=#164 id=164 data-nosnippet>164</a>/// let device = connect_with_timeout(peripheral, Duration::from_secs(15)).await?;
+<a href=#165 id=165 data-nosnippet>165</a>/// # Ok(())
+<a href=#166 id=166 data-nosnippet>166</a>/// # }
+<a href=#167 id=167 data-nosnippet>167</a>/// ```
+<a href=#168 id=168 data-nosnippet>168</a></span><span class="kw">pub async fn </span>connect_with_timeout(
+<a href=#169 id=169 data-nosnippet>169</a>    peripheral: Peripheral,
+<a href=#170 id=170 data-nosnippet>170</a>    timeout: Duration,
+<a href=#171 id=171 data-nosnippet>171</a>) -&gt; <span class="prelude-ty">Result</span>&lt;Box&lt;<span class="kw">dyn </span>VaporizerControl&gt;, StorzError&gt; {
+<a href=#172 id=172 data-nosnippet>172</a>    tokio::time::timeout(timeout, connect(peripheral))
+<a href=#173 id=173 data-nosnippet>173</a>        .<span class="kw">await
+<a href=#174 id=174 data-nosnippet>174</a>        </span>.map_err(|<span class="kw">_</span>| StorzError::Timeout)<span class="question-mark">?
+<a href=#175 id=175 data-nosnippet>175</a></span>}
 </code></pre></div></section></main></body></html>
