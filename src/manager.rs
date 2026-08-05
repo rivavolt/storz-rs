@@ -22,7 +22,11 @@ pub struct DeviceManager {
 impl DeviceManager {
     /// `filter` narrows discovery by device name substring or BLE address.
     pub fn new(filter: Option<String>) -> Self {
-        Self { device: Mutex::new(None), filter, scan_timeout: Duration::from_secs(20) }
+        Self {
+            device: Mutex::new(None),
+            filter,
+            scan_timeout: Duration::from_secs(20),
+        }
     }
 
     pub fn with_scan_timeout(mut self, timeout: Duration) -> Self {
@@ -44,7 +48,8 @@ impl DeviceManager {
         }
 
         let adapter = get_adapter().await?;
-        let peripheral = discover_first(&adapter, self.scan_timeout, self.filter.as_deref()).await?;
+        let peripheral =
+            discover_first(&adapter, self.scan_timeout, self.filter.as_deref()).await?;
         let device: Arc<dyn VaporizerControl> = Arc::from(connect(peripheral).await?);
         *guard = Some(device.clone());
         Ok(device)

@@ -10,13 +10,16 @@ use rmcp::{
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
-use storz_rs::{HttpDevice, Workflow, WorkflowRunner, WorkflowStep, VaporizerControl};
+use storz_rs::{HttpDevice, VaporizerControl, Workflow, WorkflowRunner, WorkflowStep};
 use tokio::sync::Mutex;
 
 /// Device access: either the lib's auto-reconnecting BLE manager, or a remote volcano-daemon holding the connection (VOLCANO_DAEMON).
 enum Backend {
     Ble(storz_rs::DeviceManager),
-    Daemon { url: String, cached: Mutex<Option<Arc<HttpDevice>>> },
+    Daemon {
+        url: String,
+        cached: Mutex<Option<Arc<HttpDevice>>>,
+    },
 }
 
 struct DeviceManager {
@@ -26,7 +29,10 @@ struct DeviceManager {
 impl DeviceManager {
     fn new(filter: Option<String>, daemon: Option<String>) -> Self {
         let backend = match daemon {
-            Some(url) => Backend::Daemon { url, cached: Mutex::new(None) },
+            Some(url) => Backend::Daemon {
+                url,
+                cached: Mutex::new(None),
+            },
             None => Backend::Ble(storz_rs::DeviceManager::new(filter)),
         };
         Self { backend }
@@ -116,7 +122,9 @@ fn err(e: impl std::fmt::Display) -> McpError {
 #[tool_router]
 impl VolcanoServer {
     fn new(filter: Option<String>, daemon: Option<String>) -> Self {
-        Self { manager: Arc::new(DeviceManager::new(filter, daemon)) }
+        Self {
+            manager: Arc::new(DeviceManager::new(filter, daemon)),
+        }
     }
 
     #[tool(
@@ -127,8 +135,16 @@ impl VolcanoServer {
         let mut state = device.get_state().await.map_err(err)?;
         // Notifications keep the state fresh on a held connection; explicit reads are only needed right after connect, before the first notification lands.
         if state.current_temp.is_none() || state.target_temp.is_none() {
-            state.current_temp = device.get_current_temperature().await.ok().or(state.current_temp);
-            state.target_temp = device.get_target_temperature().await.ok().or(state.target_temp);
+            state.current_temp = device
+                .get_current_temperature()
+                .await
+                .ok()
+                .or(state.current_temp);
+            state.target_temp = device
+                .get_target_temperature()
+                .await
+                .ok()
+                .or(state.target_temp);
             tokio::time::sleep(Duration::from_millis(300)).await;
             let refreshed = device.get_state().await.map_err(err)?;
             state.heater_on = refreshed.heater_on;
@@ -145,14 +161,23 @@ impl VolcanoServer {
     }
 
     #[tool(description = "Set the target temperature in degrees Celsius.")]
-    async fn set_temperature(&self, Parameters(args): Parameters<TemperatureArgs>) -> Result<CallToolResult, McpError> {
+    async fn set_temperature(
+        &self,
+        Parameters(args): Parameters<TemperatureArgs>,
+    ) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
-        device.set_target_temperature(args.celsius).await.map_err(err)?;
+        device
+            .set_target_temperature(args.celsius)
+            .await
+            .map_err(err)?;
         Ok(ok(format!("target set to {:.1}°C", args.celsius)))
     }
 
     #[tool(description = "Turn the heater on or off.")]
-    async fn heater(&self, Parameters(args): Parameters<SwitchArgs>) -> Result<CallToolResult, McpError> {
+    async fn heater(
+        &self,
+        Parameters(args): Parameters<SwitchArgs>,
+    ) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
         if args.on {
             device.heater_on().await.map_err(err)?;
@@ -163,7 +188,10 @@ impl VolcanoServer {
     }
 
     #[tool(description = "Turn the air pump on or off (Volcano Hybrid only).")]
-    async fn pump(&self, Parameters(args): Parameters<SwitchArgs>) -> Result<CallToolResult, McpError> {
+    async fn pump(
+        &self,
+        Parameters(args): Parameters<SwitchArgs>,
+    ) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
         if args.on {
             device.pump_on().await.map_err(err)?;
@@ -176,7 +204,10 @@ impl VolcanoServer {
     #[tool(
         description = "Run the pump to fill a balloon bag: either one continuous run of `seconds`, or with pulse_seconds set, bursts with reheat pauses until `seconds` of total pump time."
     )]
-    async fn fill_bag(&self, Parameters(args): Parameters<FillArgs>) -> Result<CallToolResult, McpError> {
+    async fn fill_bag(
+        &self,
+        Parameters(args): Parameters<FillArgs>,
+    ) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
         let pulse = args.pulse_seconds.unwrap_or(args.seconds).max(1);
         let rest = args.rest_seconds.unwrap_or(10);
@@ -218,14 +249,19 @@ impl VolcanoServer {
             }
         })
         .await
-        .map_err(|_| McpError::internal_error(format!("timed out waiting for {target:.1}°C"), None))?;
+        .map_err(|_| {
+            McpError::internal_error(format!("timed out waiting for {target:.1}°C"), None)
+        })?;
         Ok(ok(format!("reached {reached:.1}°C")))
     }
 
     #[tool(
         description = "Run a multi-step session workflow: each step heats to a temperature, holds, then pumps. Blocks until all steps complete."
     )]
-    async fn run_workflow(&self, Parameters(args): Parameters<WorkflowArgs>) -> Result<CallToolResult, McpError> {
+    async fn run_workflow(
+        &self,
+        Parameters(args): Parameters<WorkflowArgs>,
+    ) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
         let mut workflow = Workflow::new("mcp");
         for step in args.steps {
@@ -249,7 +285,10 @@ impl VolcanoServer {
     }
 
     #[tool(description = "Set display brightness (0-100).")]
-    async fn set_brightness(&self, Parameters(args): Parameters<BrightnessArgs>) -> Result<CallToolResult, McpError> {
+    async fn set_brightness(
+        &self,
+        Parameters(args): Parameters<BrightnessArgs>,
+    ) -> Result<CallToolResult, McpError> {
         let device = self.manager.get().await?;
         device.set_brightness(args.value).await.map_err(err)?;
         Ok(ok(format!("brightness {}", args.value)))
@@ -275,8 +314,12 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // Optional device name/address filter, e.g. `volcano-mcp VOLCANO` or VOLCANO_DEVICE env.
-    let filter = std::env::args().nth(1).or_else(|| std::env::var("VOLCANO_DEVICE").ok());
-    let daemon = std::env::var("VOLCANO_DAEMON").ok().filter(|s| !s.is_empty());
+    let filter = std::env::args()
+        .nth(1)
+        .or_else(|| std::env::var("VOLCANO_DEVICE").ok());
+    let daemon = std::env::var("VOLCANO_DAEMON")
+        .ok()
+        .filter(|s| !s.is_empty());
 
     let service = VolcanoServer::new(filter, daemon).serve(stdio()).await?;
     service.waiting().await?;

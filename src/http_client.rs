@@ -35,7 +35,11 @@ impl HttpDevice {
             .map_err(|e| StorzError::Other(e.to_string()))?;
         let base = base.trim_end_matches('/').to_string();
         let resp: StateResponse = get_json(&client, &format!("{base}/state")).await?;
-        Ok(Self { base, client, model: resp.model })
+        Ok(Self {
+            base,
+            client,
+            model: resp.model,
+        })
     }
 
     async fn state(&self) -> Result<StateResponse, StorzError> {
@@ -60,36 +64,56 @@ impl HttpDevice {
     }
 }
 
-async fn get_json<T: DeserializeOwned>(client: &reqwest::Client, url: &str) -> Result<T, StorzError> {
-    let resp = client.get(url).send().await.map_err(|e| StorzError::Other(format!("daemon unreachable: {e}")))?;
+async fn get_json<T: DeserializeOwned>(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<T, StorzError> {
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| StorzError::Other(format!("daemon unreachable: {e}")))?;
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         return Err(StorzError::Other(format!("daemon error {status}: {text}")));
     }
-    resp.json().await.map_err(|e| StorzError::Other(format!("bad daemon response: {e}")))
+    resp.json()
+        .await
+        .map_err(|e| StorzError::Other(format!("bad daemon response: {e}")))
 }
 
 #[async_trait]
 impl VaporizerControl for HttpDevice {
     async fn get_current_temperature(&self) -> Result<f32, StorzError> {
-        self.state().await?.state.current_temp.ok_or(StorzError::NotConnected)
+        self.state()
+            .await?
+            .state
+            .current_temp
+            .ok_or(StorzError::NotConnected)
     }
 
     async fn get_target_temperature(&self) -> Result<f32, StorzError> {
-        self.state().await?.state.target_temp.ok_or(StorzError::NotConnected)
+        self.state()
+            .await?
+            .state
+            .target_temp
+            .ok_or(StorzError::NotConnected)
     }
 
     async fn set_target_temperature(&self, celsius: f32) -> Result<(), StorzError> {
-        self.post("/target-temp", &serde_json::json!({ "celsius": celsius })).await
+        self.post("/target-temp", &serde_json::json!({ "celsius": celsius }))
+            .await
     }
 
     async fn heater_on(&self) -> Result<(), StorzError> {
-        self.post("/heater", &serde_json::json!({ "on": true })).await
+        self.post("/heater", &serde_json::json!({ "on": true }))
+            .await
     }
 
     async fn heater_off(&self) -> Result<(), StorzError> {
-        self.post("/heater", &serde_json::json!({ "on": false })).await
+        self.post("/heater", &serde_json::json!({ "on": false }))
+            .await
     }
 
     async fn pump_on(&self) -> Result<(), StorzError> {
@@ -97,37 +121,50 @@ impl VaporizerControl for HttpDevice {
     }
 
     async fn pump_off(&self) -> Result<(), StorzError> {
-        self.post("/pump", &serde_json::json!({ "on": false })).await
+        self.post("/pump", &serde_json::json!({ "on": false }))
+            .await
     }
 
     async fn get_state(&self) -> Result<DeviceState, StorzError> {
         Ok(self.state().await?.state)
     }
 
-    async fn subscribe_state(&self) -> Result<Pin<Box<dyn Stream<Item = DeviceState> + Send>>, StorzError> {
+    async fn subscribe_state(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = DeviceState> + Send>>, StorzError> {
         let base = self.base.clone();
         let client = self.client.clone();
-        Ok(Box::pin(futures::stream::unfold((client, base), |(client, base)| async move {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            let state = get_json::<StateResponse>(&client, &format!("{base}/state")).await.ok()?.state;
-            Some((state, (client, base)))
-        })))
+        Ok(Box::pin(futures::stream::unfold(
+            (client, base),
+            |(client, base)| async move {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                let state = get_json::<StateResponse>(&client, &format!("{base}/state"))
+                    .await
+                    .ok()?
+                    .state;
+                Some((state, (client, base)))
+            },
+        )))
     }
 
     async fn set_brightness(&self, value: u16) -> Result<(), StorzError> {
-        self.post("/brightness", &serde_json::json!({ "value": value })).await
+        self.post("/brightness", &serde_json::json!({ "value": value }))
+            .await
     }
 
     async fn set_vibration(&self, on: bool) -> Result<(), StorzError> {
-        self.post("/vibration", &serde_json::json!({ "on": on })).await
+        self.post("/vibration", &serde_json::json!({ "on": on }))
+            .await
     }
 
     async fn set_shutoff_time(&self, seconds: u16) -> Result<(), StorzError> {
-        self.post("/shutoff-time", &serde_json::json!({ "seconds": seconds })).await
+        self.post("/shutoff-time", &serde_json::json!({ "seconds": seconds }))
+            .await
     }
 
     async fn set_temperature_unit(&self, celsius: bool) -> Result<(), StorzError> {
-        self.post("/unit", &serde_json::json!({ "celsius": celsius })).await
+        self.post("/unit", &serde_json::json!({ "celsius": celsius }))
+            .await
     }
 
     async fn get_device_info(&self) -> Result<DeviceInfo, StorzError> {

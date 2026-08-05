@@ -126,12 +126,16 @@ impl DummyDevice {
 impl VaporizerControl for DummyDevice {
     async fn get_current_temperature(&self) -> Result<f32, StorzError> {
         let state = self.state.lock().await;
-        state.current_temp.ok_or(StorzError::ParseError("Current temperature not available".into()))
+        state.current_temp.ok_or(StorzError::ParseError(
+            "Current temperature not available".into(),
+        ))
     }
 
     async fn get_target_temperature(&self) -> Result<f32, StorzError> {
         let state = self.state.lock().await;
-        state.target_temp.ok_or(StorzError::ParseError("Target temperature not available".into()))
+        state.target_temp.ok_or(StorzError::ParseError(
+            "Target temperature not available".into(),
+        ))
     }
 
     async fn set_target_temperature(&self, celsius: f32) -> Result<(), StorzError> {
@@ -178,14 +182,21 @@ impl VaporizerControl for DummyDevice {
         Ok(state.clone())
     }
 
-    async fn subscribe_state(&self) -> Result<Pin<Box<dyn Stream<Item = DeviceState> + Send>>, StorzError> {
+    async fn subscribe_state(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = DeviceState> + Send>>, StorzError> {
         let rx = self.state_tx.subscribe();
-        Ok(Box::pin(BroadcastStream::new(rx).filter_map(|r| async move { r.ok() })))
+        Ok(Box::pin(
+            BroadcastStream::new(rx).filter_map(|r| async move { r.ok() }),
+        ))
     }
 
     async fn get_settings(&self) -> Result<DeviceSettings, StorzError> {
         let state = self.state.lock().await;
-        state.settings.clone().ok_or(StorzError::ParseError("Settings not available".into()))
+        state
+            .settings
+            .clone()
+            .ok_or(StorzError::ParseError("Settings not available".into()))
     }
 
     async fn set_temperature_unit(&self, celsius: bool) -> Result<(), StorzError> {
@@ -310,7 +321,10 @@ mod tests {
 
         let current = device.get_current_temperature().await.unwrap();
         let initial = 22.0;
-        assert!(current > initial, "Temperature should increase when heating");
+        assert!(
+            current > initial,
+            "Temperature should increase when heating"
+        );
     }
 
     #[tokio::test]

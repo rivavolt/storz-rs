@@ -3,10 +3,16 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use futures::StreamExt;
-use storz_rs::{VaporizerControl, Workflow, WorkflowRunner, WorkflowStep, connect, discover_first, get_adapter};
+use storz_rs::{
+    VaporizerControl, Workflow, WorkflowRunner, WorkflowStep, connect, discover_first, get_adapter,
+};
 
 #[derive(Parser)]
-#[command(name = "volcano", about = "Control a Storz & Bickel vaporizer over BLE", infer_subcommands = true)]
+#[command(
+    name = "volcano",
+    about = "Control a Storz & Bickel vaporizer over BLE",
+    infer_subcommands = true
+)]
 struct Cli {
     /// Device name substring or BLE address to connect to (default: first S&B device found)
     #[arg(short, long, global = true)]
@@ -102,17 +108,30 @@ async fn main() -> Result<()> {
     // Completions run before any device connect, so a powered-off vaporizer never breaks shell startup.
     if let Command::Completions { shell } = cli.command {
         use clap::CommandFactory;
-        clap_complete::generate(shell, &mut Cli::command(), "volcano", &mut std::io::stdout());
+        clap_complete::generate(
+            shell,
+            &mut Cli::command(),
+            "volcano",
+            &mut std::io::stdout(),
+        );
         return Ok(());
     }
 
     let device: Box<dyn VaporizerControl> = match &cli.daemon {
-        Some(url) => Box::new(storz_rs::HttpDevice::connect(url).await.context("daemon connect failed")?),
+        Some(url) => Box::new(
+            storz_rs::HttpDevice::connect(url)
+                .await
+                .context("daemon connect failed")?,
+        ),
         None => {
             let adapter = get_adapter().await.context("no BLE adapter")?;
-            let peripheral = discover_first(&adapter, Duration::from_secs(cli.timeout), cli.device.as_deref())
-                .await
-                .context("no Storz & Bickel device found (is it powered on?)")?;
+            let peripheral = discover_first(
+                &adapter,
+                Duration::from_secs(cli.timeout),
+                cli.device.as_deref(),
+            )
+            .await
+            .context("no Storz & Bickel device found (is it powered on?)")?;
             connect(peripheral).await.context("connect failed")?
         }
     };
@@ -145,7 +164,10 @@ async fn run(cli: &Cli, device: &dyn VaporizerControl) -> Result<()> {
             let current = device.get_current_temperature().await?;
             let target = device.get_target_temperature().await?;
             if cli.json {
-                println!("{}", serde_json::json!({"current": current, "target": target}));
+                println!(
+                    "{}",
+                    serde_json::json!({"current": current, "target": target})
+                );
             } else {
                 println!("current {current:.1}°C → target {target:.1}°C");
             }
@@ -170,13 +192,21 @@ async fn run(cli: &Cli, device: &dyn VaporizerControl) -> Result<()> {
             }
             println!("pump {state}");
         }
-        Command::Fill { seconds, pulse: None, .. } => {
+        Command::Fill {
+            seconds,
+            pulse: None,
+            ..
+        } => {
             device.pump_on().await?;
             tokio::time::sleep(Duration::from_secs(*seconds)).await;
             device.pump_off().await?;
             println!("pumped for {seconds}s");
         }
-        Command::Fill { seconds, pulse: Some(pulse), rest } => {
+        Command::Fill {
+            seconds,
+            pulse: Some(pulse),
+            rest,
+        } => {
             let pulse = (*pulse).max(1);
             let mut pumped = 0;
             while pumped < *seconds {
