@@ -154,6 +154,48 @@ async fn unit(State(app): S, Json(body): Json<UnitBody>) -> Result<StatusCode, E
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Tie the display to heater activity: light it at `on_brightness` while the heater runs, dark otherwise. Follows the connection through reconnects; the manager's own scan timeout paces retries.
+async fn display_automation(app: Arc<App>, on_brightness: u16) {
+    use futures::StreamExt;
+    let mut last: Option<bool> = None;
+    loop {
+        let device = match app.manager.get().await {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        let mut stream = match device.subscribe_state().await {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if let Ok(state) = device.get_state().await {
+            apply_display(&*device, &mut last, state.heater_on, on_brightness).await;
+        }
+        while let Some(state) = stream.next().await {
+            apply_display(&*device, &mut last, state.heater_on, on_brightness).await;
+        }
+        info!("display automation: state stream ended, re-subscribing");
+    }
+}
+
+async fn apply_display(
+    device: &dyn VaporizerControl,
+    last: &mut Option<bool>,
+    heater_on: bool,
+    on_brightness: u16,
+) {
+    if *last == Some(heater_on) {
+        return;
+    }
+    let value = if heater_on { on_brightness } else { 0 };
+    match device.set_brightness(value).await {
+        Ok(()) => {
+            info!("display automation: heater {heater_on} -> brightness {value}");
+            *last = Some(heater_on);
+        }
+        Err(e) => info!("display automation: brightness write failed: {e}"),
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -170,6 +212,15 @@ async fn main() -> anyhow::Result<()> {
     // Warm the connection at startup so the first request doesn't pay the scan+connect cost; failure is fine, the manager reconnects on demand.
     if let Err(e) = app.manager.get().await {
         info!("initial connect failed (will retry on demand): {e}");
+    }
+
+    // VOLCANO_DISPLAY_AUTO=<brightness> keeps the display lit only while the heater runs.
+    if let Some(on_brightness) = std::env::var("VOLCANO_DISPLAY_AUTO")
+        .ok()
+        .and_then(|v| v.parse::<u16>().ok())
+    {
+        info!("display automation on: heater -> brightness {on_brightness}, idle -> 0");
+        tokio::spawn(display_automation(app.clone(), on_brightness));
     }
 
     let router = Router::new()
