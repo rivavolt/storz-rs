@@ -12,8 +12,10 @@ use serde::Deserialize;
 use storz_rs::{DeviceManager, VaporizerControl};
 use tracing::info;
 
+mod sock;
+
 struct App {
-    manager: DeviceManager,
+    manager: Arc<DeviceManager>,
 }
 
 type S = State<Arc<App>>;
@@ -206,7 +208,7 @@ async fn main() -> anyhow::Result<()> {
     let addr = std::env::var("VOLCANO_ADDR").unwrap_or_else(|_| "0.0.0.0:8814".into());
 
     let app = Arc::new(App {
-        manager: DeviceManager::new(filter),
+        manager: Arc::new(DeviceManager::new(filter)),
     });
 
     // Warm the connection at startup so the first request doesn't pay the scan+connect cost; failure is fine, the manager reconnects on demand.
@@ -234,7 +236,23 @@ async fn main() -> anyhow::Result<()> {
         .route("/vibration", post(vibration))
         .route("/shutoff-time", post(shutoff_time))
         .route("/unit", post(unit))
-        .with_state(app);
+        .with_state(app.clone());
+
+    let sock_path = std::env::var("VOLCANO_SOCKET").unwrap_or_else(|_| {
+        format!(
+            "{}/volcano.sock",
+            std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())
+        )
+    });
+    {
+        let manager = app.manager.clone();
+        let path = std::path::PathBuf::from(&sock_path);
+        tokio::spawn(async move {
+            if let Err(e) = sock::serve(manager, &path).await {
+                info!("socket server failed: {e}");
+            }
+        });
+    }
 
     info!("volcano-daemon listening on {addr}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
