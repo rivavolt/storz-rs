@@ -10,7 +10,7 @@ use tracing::info;
 
 use crate::error::StorzError;
 use crate::protocol::VaporizerControl;
-use crate::{connect, discover_first, get_adapter};
+use crate::{connect_with_timeout, discover_first, get_adapter};
 
 /// Lazily-connected, auto-reconnecting handle to a vaporizer.
 pub struct DeviceManager {
@@ -39,8 +39,11 @@ impl DeviceManager {
         let mut guard = self.device.lock().await;
 
         if let Some(device) = guard.as_ref() {
-            // A cheap read doubles as a liveness probe; on failure fall through to reconnect.
-            if device.get_current_temperature().await.is_ok() {
+            // A cheap read doubles as a liveness probe; on failure fall through to reconnect. Bounded, because a probe on a half-dead connection can hang while this holds the manager lock.
+            let probe =
+                tokio::time::timeout(Duration::from_secs(5), device.get_current_temperature())
+                    .await;
+            if matches!(probe, Ok(Ok(_))) {
                 return Ok(device.clone());
             }
             info!("device unresponsive, reconnecting");
@@ -50,7 +53,9 @@ impl DeviceManager {
         let adapter = get_adapter().await?;
         let peripheral =
             discover_first(&adapter, self.scan_timeout, self.filter.as_deref()).await?;
-        let device: Arc<dyn VaporizerControl> = Arc::from(connect(peripheral).await?);
+        // Bounded for the same reason: a hung BLE connect must not wedge every caller behind the lock.
+        let device: Arc<dyn VaporizerControl> =
+            Arc::from(connect_with_timeout(peripheral, Duration::from_secs(20)).await?);
         *guard = Some(device.clone());
         Ok(device)
     }

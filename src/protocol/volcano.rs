@@ -20,20 +20,24 @@ pub struct VolcanoHybrid {
     peripheral: Peripheral,
     state: Arc<Mutex<DeviceState>>,
     state_tx: broadcast::Sender<DeviceState>,
+    // Flipped true when the BLE notification stream ends, so state subscribers terminate instead of blocking forever on a dead connection.
+    closed_rx: tokio::sync::watch::Receiver<bool>,
 }
 
 impl VolcanoHybrid {
     pub async fn new(peripheral: Peripheral) -> Result<Self, StorzError> {
         let (state_tx, _) = broadcast::channel(16);
+        let (closed_tx, closed_rx) = tokio::sync::watch::channel(false);
 
         let device = Self {
             peripheral,
             state: Arc::new(Mutex::new(DeviceState::default())),
             state_tx,
+            closed_rx,
         };
 
         device.init_notifications().await?;
-        device.spawn_notification_loop();
+        device.spawn_notification_loop(closed_tx);
         Ok(device)
     }
 
@@ -95,7 +99,7 @@ impl VolcanoHybrid {
         Ok(())
     }
 
-    fn spawn_notification_loop(&self) {
+    fn spawn_notification_loop(&self, closed_tx: tokio::sync::watch::Sender<bool>) {
         let peripheral = self.peripheral.clone();
         let state = self.state.clone();
         let state_tx = self.state_tx.clone();
@@ -118,6 +122,7 @@ impl VolcanoHybrid {
             }
 
             warn!("Volcano Hybrid notification stream ended (disconnect?)");
+            let _ = closed_tx.send(true);
         });
     }
 
@@ -250,9 +255,17 @@ impl VaporizerControl for VolcanoHybrid {
         &self,
     ) -> Result<Pin<Box<dyn Stream<Item = DeviceState> + Send>>, StorzError> {
         let rx = self.state_tx.subscribe();
-        Ok(Box::pin(
-            BroadcastStream::new(rx).filter_map(|r| async move { r.ok() }),
-        ))
+        let mut closed = self.closed_rx.clone();
+        let updates = BroadcastStream::new(rx).filter_map(|r| async move { r.ok() });
+        // End the stream when the underlying connection dies, so consumers reconnect instead of blocking on a corpse.
+        let until_closed = async move {
+            while !*closed.borrow() {
+                if closed.changed().await.is_err() {
+                    break;
+                }
+            }
+        };
+        Ok(Box::pin(updates.take_until(until_closed)))
     }
 
     async fn set_brightness(&self, value: u16) -> Result<(), StorzError> {
