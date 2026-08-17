@@ -37,8 +37,28 @@ impl VolcanoHybrid {
         };
 
         device.init_notifications().await?;
-        device.spawn_notification_loop(closed_tx);
+        let closed_tx = Arc::new(closed_tx);
+        device.spawn_notification_loop(closed_tx.clone());
+        device.spawn_liveness_watchdog(closed_tx);
         Ok(device)
+    }
+
+    /// BlueZ does not always end the notification stream when the device powers itself off — the stream can go silent without yielding None — so the closed signal also needs an active check of the link itself.
+    fn spawn_liveness_watchdog(&self, closed_tx: Arc<tokio::sync::watch::Sender<bool>>) {
+        let peripheral = self.peripheral.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                if *closed_tx.borrow() {
+                    return;
+                }
+                if !matches!(peripheral.is_connected().await, Ok(true)) {
+                    warn!("Volcano Hybrid link lost (liveness check); closing state streams");
+                    let _ = closed_tx.send(true);
+                    return;
+                }
+            }
+        });
     }
 
     async fn characteristic(&self, uuid: uuid::Uuid) -> Result<Characteristic, StorzError> {
@@ -99,7 +119,7 @@ impl VolcanoHybrid {
         Ok(())
     }
 
-    fn spawn_notification_loop(&self, closed_tx: tokio::sync::watch::Sender<bool>) {
+    fn spawn_notification_loop(&self, closed_tx: Arc<tokio::sync::watch::Sender<bool>>) {
         let peripheral = self.peripheral.clone();
         let state = self.state.clone();
         let state_tx = self.state_tx.clone();
