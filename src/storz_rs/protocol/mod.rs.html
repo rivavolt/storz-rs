@@ -238,7 +238,10 @@
 <a href=#238 id=238 data-nosnippet>238</a>        <span class="prelude-val">Ok</span>(state.settings.map(|s| s.is_charging))
 <a href=#239 id=239 data-nosnippet>239</a>    }
 <a href=#240 id=240 data-nosnippet>240</a>
-<a href=#241 id=241 data-nosnippet>241</a>    <span class="doccomment">/// Return the device model.
-<a href=#242 id=242 data-nosnippet>242</a>    </span><span class="kw">fn </span>device_model(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; DeviceModel;
-<a href=#243 id=243 data-nosnippet>243</a>}
+<a href=#241 id=241 data-nosnippet>241</a>    <span class="doccomment">/// Inform the device handle that its BLE link is gone (driven by adapter disconnect events). Implementations should terminate their state streams so subscribers reconnect; the default is a no-op.
+<a href=#242 id=242 data-nosnippet>242</a>    </span><span class="kw">fn </span>mark_disconnected(<span class="kw-2">&amp;</span><span class="self">self</span>) {}
+<a href=#243 id=243 data-nosnippet>243</a>
+<a href=#244 id=244 data-nosnippet>244</a>    <span class="doccomment">/// Return the device model.
+<a href=#245 id=245 data-nosnippet>245</a>    </span><span class="kw">fn </span>device_model(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; DeviceModel;
+<a href=#246 id=246 data-nosnippet>246</a>}
 </code></pre></div></section></main></body></html>
