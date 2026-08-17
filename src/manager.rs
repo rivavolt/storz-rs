@@ -5,6 +5,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use btleplug::api::{Central, CentralEvent, Peripheral as _};
+use futures::StreamExt;
 use tokio::sync::Mutex;
 use tracing::info;
 
@@ -53,9 +55,30 @@ impl DeviceManager {
         let adapter = get_adapter().await?;
         let peripheral =
             discover_first(&adapter, self.scan_timeout, self.filter.as_deref()).await?;
+        let peripheral_id = peripheral.id();
+        // The event stream is opened before connecting so a disconnect racing the handshake can't slip between.
+        let mut events = adapter.events().await?;
         // Bounded for the same reason: a hung BLE connect must not wedge every caller behind the lock.
         let device: Arc<dyn VaporizerControl> =
             Arc::from(connect_with_timeout(peripheral, Duration::from_secs(20)).await?);
+
+        // Relay the adapter's disconnect event into the device handle so its state streams terminate — BlueZ does not reliably end notification streams when the device powers itself off, but it does flip the Connected property, which surfaces here.
+        {
+            let device = device.clone();
+            tokio::spawn(async move {
+                while let Some(event) = events.next().await {
+                    if let CentralEvent::DeviceDisconnected(id) = event {
+                        if id == peripheral_id {
+                            device.mark_disconnected();
+                            return;
+                        }
+                    }
+                }
+                // The event stream itself ending means the adapter is gone, which is a disconnect too.
+                device.mark_disconnected();
+            });
+        }
+
         *guard = Some(device.clone());
         Ok(device)
     }

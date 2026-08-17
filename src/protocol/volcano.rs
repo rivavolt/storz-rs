@@ -20,7 +20,8 @@ pub struct VolcanoHybrid {
     peripheral: Peripheral,
     state: Arc<Mutex<DeviceState>>,
     state_tx: broadcast::Sender<DeviceState>,
-    // Flipped true when the BLE notification stream ends, so state subscribers terminate instead of blocking forever on a dead connection.
+    // Flipped true when the BLE link dies — by the notification stream ending, or by an adapter disconnect event via mark_disconnected (BlueZ can leave the stream silently open when the device powers itself off). Subscribers terminate on it instead of blocking forever.
+    closed_tx: Arc<tokio::sync::watch::Sender<bool>>,
     closed_rx: tokio::sync::watch::Receiver<bool>,
 }
 
@@ -28,37 +29,19 @@ impl VolcanoHybrid {
     pub async fn new(peripheral: Peripheral) -> Result<Self, StorzError> {
         let (state_tx, _) = broadcast::channel(16);
         let (closed_tx, closed_rx) = tokio::sync::watch::channel(false);
+        let closed_tx = Arc::new(closed_tx);
 
         let device = Self {
             peripheral,
             state: Arc::new(Mutex::new(DeviceState::default())),
             state_tx,
+            closed_tx: closed_tx.clone(),
             closed_rx,
         };
 
         device.init_notifications().await?;
-        let closed_tx = Arc::new(closed_tx);
-        device.spawn_notification_loop(closed_tx.clone());
-        device.spawn_liveness_watchdog(closed_tx);
+        device.spawn_notification_loop(closed_tx);
         Ok(device)
-    }
-
-    /// BlueZ does not always end the notification stream when the device powers itself off — the stream can go silent without yielding None — so the closed signal also needs an active check of the link itself.
-    fn spawn_liveness_watchdog(&self, closed_tx: Arc<tokio::sync::watch::Sender<bool>>) {
-        let peripheral = self.peripheral.clone();
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                if *closed_tx.borrow() {
-                    return;
-                }
-                if !matches!(peripheral.is_connected().await, Ok(true)) {
-                    warn!("Volcano Hybrid link lost (liveness check); closing state streams");
-                    let _ = closed_tx.send(true);
-                    return;
-                }
-            }
-        });
     }
 
     async fn characteristic(&self, uuid: uuid::Uuid) -> Result<Characteristic, StorzError> {
@@ -366,6 +349,11 @@ impl VaporizerControl for VolcanoHybrid {
             .await?;
         debug!("Volcano display-on-cooling set to {on}");
         Ok(())
+    }
+
+    fn mark_disconnected(&self) {
+        warn!("Volcano Hybrid link lost (adapter disconnect event); closing state streams");
+        let _ = self.closed_tx.send(true);
     }
 
     fn device_model(&self) -> DeviceModel {

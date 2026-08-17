@@ -238,6 +238,9 @@ pub trait VaporizerControl: Send + Sync {
         Ok(state.settings.map(|s| s.is_charging))
     }
 
+    /// Inform the device handle that its BLE link is gone (driven by adapter disconnect events). Implementations should terminate their state streams so subscribers reconnect; the default is a no-op.
+    fn mark_disconnected(&self) {}
+
     /// Return the device model.
     fn device_model(&self) -> DeviceModel;
 }
