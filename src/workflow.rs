@@ -38,10 +38,7 @@ pub struct Workflow {
 impl Workflow {
     /// Create a new workflow with the given name.
     pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            steps: Vec::new(),
-        }
+        Self { name: name.into(), steps: Vec::new() }
     }
 
     /// Add a step to the workflow.
@@ -77,10 +74,7 @@ pub struct WorkflowRunner {
 impl WorkflowRunner {
     /// Create a new workflow runner.
     pub fn new() -> Self {
-        Self {
-            state: Arc::new(Mutex::new(WorkflowState::Idle)),
-            current_step: Arc::new(Mutex::new(0)),
-        }
+        Self { state: Arc::new(Mutex::new(WorkflowState::Idle)), current_step: Arc::new(Mutex::new(0)) }
     }
 
     /// Get the current workflow state.
@@ -103,11 +97,7 @@ impl WorkflowRunner {
     /// 5. Activates the pump for the pump duration
     ///
     /// The workflow can be stopped at any time by calling [`stop`](Self::stop).
-    pub async fn run(
-        &self,
-        device: &dyn VaporizerControl,
-        workflow: &Workflow,
-    ) -> Result<(), StorzError> {
+    pub async fn run(&self, device: &dyn VaporizerControl, workflow: &Workflow) -> Result<(), StorzError> {
         {
             let mut state = self.state.lock().await;
             if *state == WorkflowState::Running {
@@ -117,11 +107,7 @@ impl WorkflowRunner {
         }
 
         *self.current_step.lock().await = 0;
-        info!(
-            "Starting workflow '{}' with {} steps",
-            workflow.name,
-            workflow.steps.len()
-        );
+        info!("Starting workflow '{}' with {} steps", workflow.name, workflow.steps.len());
 
         for (i, step) in workflow.steps.iter().enumerate() {
             // Check if we should stop
@@ -161,11 +147,7 @@ impl WorkflowRunner {
         Ok(())
     }
 
-    async fn execute_step(
-        &self,
-        device: &dyn VaporizerControl,
-        step: &WorkflowStep,
-    ) -> Result<(), StorzError> {
+    async fn execute_step(&self, device: &dyn VaporizerControl, step: &WorkflowStep) -> Result<(), StorzError> {
         // 1. Set target temperature
         device.set_target_temperature(step.temperature).await?;
         debug!("Target temperature set to {}°C", step.temperature);
@@ -175,8 +157,7 @@ impl WorkflowRunner {
         tokio::time::sleep(Duration::from_millis(750)).await;
 
         // 3. Wait for temperature to be reached (±1°C tolerance)
-        self.wait_for_temperature(device, step.temperature, 1.0)
-            .await?;
+        self.wait_for_temperature(device, step.temperature, 1.0).await?;
 
         // 4. Hold at temperature
         if step.hold_time_seconds > 0 {
@@ -274,16 +255,8 @@ mod tests {
     #[test]
     fn test_workflow_builder() {
         let workflow = Workflow::new("Test")
-            .add_step(WorkflowStep {
-                temperature: 180.0,
-                hold_time_seconds: 10,
-                pump_time_seconds: 5,
-            })
-            .add_step(WorkflowStep {
-                temperature: 200.0,
-                hold_time_seconds: 5,
-                pump_time_seconds: 10,
-            });
+            .add_step(WorkflowStep { temperature: 180.0, hold_time_seconds: 10, pump_time_seconds: 5 })
+            .add_step(WorkflowStep { temperature: 200.0, hold_time_seconds: 5, pump_time_seconds: 10 });
 
         assert_eq!(workflow.name, "Test");
         assert_eq!(workflow.steps.len(), 2);
@@ -293,77 +266,25 @@ mod tests {
 
     #[test]
     fn test_workflow_step_equality() {
-        let a = WorkflowStep {
-            temperature: 185.0,
-            hold_time_seconds: 0,
-            pump_time_seconds: 5,
-        };
-        let b = WorkflowStep {
-            temperature: 185.0,
-            hold_time_seconds: 0,
-            pump_time_seconds: 5,
-        };
+        let a = WorkflowStep { temperature: 185.0, hold_time_seconds: 0, pump_time_seconds: 5 };
+        let b = WorkflowStep { temperature: 185.0, hold_time_seconds: 0, pump_time_seconds: 5 };
         assert_eq!(a, b);
     }
 
     #[test]
     fn test_default_workflows() {
         let balloon = Workflow::new("Balloon")
-            .add_step(WorkflowStep {
-                temperature: 170.0,
-                hold_time_seconds: 0,
-                pump_time_seconds: 5,
-            })
-            .add_step(WorkflowStep {
-                temperature: 175.0,
-                hold_time_seconds: 0,
-                pump_time_seconds: 5,
-            })
-            .add_step(WorkflowStep {
-                temperature: 180.0,
-                hold_time_seconds: 0,
-                pump_time_seconds: 5,
-            })
-            .add_step(WorkflowStep {
-                temperature: 185.0,
-                hold_time_seconds: 0,
-                pump_time_seconds: 5,
-            })
-            .add_step(WorkflowStep {
-                temperature: 190.0,
-                hold_time_seconds: 0,
-                pump_time_seconds: 5,
-            })
-            .add_step(WorkflowStep {
-                temperature: 195.0,
-                hold_time_seconds: 0,
-                pump_time_seconds: 5,
-            })
-            .add_step(WorkflowStep {
-                temperature: 200.0,
-                hold_time_seconds: 0,
-                pump_time_seconds: 5,
-            })
-            .add_step(WorkflowStep {
-                temperature: 205.0,
-                hold_time_seconds: 0,
-                pump_time_seconds: 5,
-            })
-            .add_step(WorkflowStep {
-                temperature: 210.0,
-                hold_time_seconds: 0,
-                pump_time_seconds: 5,
-            })
-            .add_step(WorkflowStep {
-                temperature: 215.0,
-                hold_time_seconds: 0,
-                pump_time_seconds: 5,
-            })
-            .add_step(WorkflowStep {
-                temperature: 220.0,
-                hold_time_seconds: 0,
-                pump_time_seconds: 5,
-            });
+            .add_step(WorkflowStep { temperature: 170.0, hold_time_seconds: 0, pump_time_seconds: 5 })
+            .add_step(WorkflowStep { temperature: 175.0, hold_time_seconds: 0, pump_time_seconds: 5 })
+            .add_step(WorkflowStep { temperature: 180.0, hold_time_seconds: 0, pump_time_seconds: 5 })
+            .add_step(WorkflowStep { temperature: 185.0, hold_time_seconds: 0, pump_time_seconds: 5 })
+            .add_step(WorkflowStep { temperature: 190.0, hold_time_seconds: 0, pump_time_seconds: 5 })
+            .add_step(WorkflowStep { temperature: 195.0, hold_time_seconds: 0, pump_time_seconds: 5 })
+            .add_step(WorkflowStep { temperature: 200.0, hold_time_seconds: 0, pump_time_seconds: 5 })
+            .add_step(WorkflowStep { temperature: 205.0, hold_time_seconds: 0, pump_time_seconds: 5 })
+            .add_step(WorkflowStep { temperature: 210.0, hold_time_seconds: 0, pump_time_seconds: 5 })
+            .add_step(WorkflowStep { temperature: 215.0, hold_time_seconds: 0, pump_time_seconds: 5 })
+            .add_step(WorkflowStep { temperature: 220.0, hold_time_seconds: 0, pump_time_seconds: 5 });
 
         assert_eq!(balloon.steps.len(), 11);
         assert_eq!(balloon.steps[0].temperature, 170.0);
@@ -373,10 +294,7 @@ mod tests {
     #[test]
     fn test_workflow_state_transitions() {
         let runner = WorkflowRunner::new();
-        assert_eq!(
-            futures::executor::block_on(runner.state()),
-            WorkflowState::Idle
-        );
+        assert_eq!(futures::executor::block_on(runner.state()), WorkflowState::Idle);
         assert_eq!(futures::executor::block_on(runner.current_step()), 0);
     }
 }

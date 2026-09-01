@@ -98,8 +98,7 @@ pub async fn detect_model(peripheral: &Peripheral) -> Option<DeviceModel> {
     let services = peripheral.services();
     let service_uuids: Vec<_> = services.iter().map(|s| s.uuid).collect();
 
-    if service_uuids.contains(&uuids::VOLCANO_SERVICE_STATE)
-        || service_uuids.contains(&uuids::VOLCANO_SERVICE_CONTROL)
+    if service_uuids.contains(&uuids::VOLCANO_SERVICE_STATE) || service_uuids.contains(&uuids::VOLCANO_SERVICE_CONTROL)
     {
         return Some(DeviceModel::VolcanoHybrid);
     }
@@ -169,7 +168,5 @@ pub async fn connect_with_timeout(
     peripheral: Peripheral,
     timeout: Duration,
 ) -> Result<Box<dyn VaporizerControl>, StorzError> {
-    tokio::time::timeout(timeout, connect(peripheral))
-        .await
-        .map_err(|_| StorzError::Timeout)?
+    tokio::time::timeout(timeout, connect(peripheral)).await.map_err(|_| StorzError::Timeout)?
 }

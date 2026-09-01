@@ -22,10 +22,7 @@ pub async fn serve(manager: Arc<DeviceManager>, path: &Path) -> anyhow::Result<(
 }
 
 fn now_ts() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 fn event_line(state: &DeviceState, model: &str) -> Value {
@@ -42,11 +39,7 @@ async fn handle(manager: Arc<DeviceManager>, stream: UnixStream) {
         let req: Value = match serde_json::from_str(&line) {
             Ok(v) => v,
             Err(e) => {
-                let _ = reply(
-                    &mut write,
-                    json!({"ok": false, "error": format!("bad json: {e}")}),
-                )
-                .await;
+                let _ = reply(&mut write, json!({"ok": false, "error": format!("bad json: {e}")})).await;
                 continue;
             }
         };
@@ -60,9 +53,7 @@ async fn handle(manager: Arc<DeviceManager>, stream: UnixStream) {
             return;
         }
 
-        let resp = dispatch(&manager, op, &req)
-            .await
-            .unwrap_or_else(|e| json!({"ok": false, "error": e}));
+        let resp = dispatch(&manager, op, &req).await.unwrap_or_else(|e| json!({"ok": false, "error": e}));
         if reply(&mut write, resp).await.is_err() {
             return;
         }
@@ -73,10 +64,7 @@ async fn reply(write: &mut (impl AsyncWriteExt + Unpin), v: Value) -> std::io::R
     write.write_all(format!("{v}\n").as_bytes()).await
 }
 
-async fn watch(
-    manager: &DeviceManager,
-    write: &mut (impl AsyncWriteExt + Unpin),
-) -> anyhow::Result<()> {
+async fn watch(manager: &DeviceManager, write: &mut (impl AsyncWriteExt + Unpin)) -> anyhow::Result<()> {
     let device = manager.get().await?;
     let model = device.device_model().to_string();
     // Seed the subscriber with the current state so a rule engine starting mid-session has a value immediately.
@@ -112,22 +100,12 @@ async fn dispatch(manager: &DeviceManager, op: &str, req: &Value) -> Result<Valu
         }
         "heater" => {
             let on = req["on"].as_bool().ok_or("missing on")?;
-            if on {
-                device.heater_on().await
-            } else {
-                device.heater_off().await
-            }
-            .map_err(err)?;
+            if on { device.heater_on().await } else { device.heater_off().await }.map_err(err)?;
             Ok(json!({"ok": true}))
         }
         "pump" => {
             let on = req["on"].as_bool().ok_or("missing on")?;
-            if on {
-                device.pump_on().await
-            } else {
-                device.pump_off().await
-            }
-            .map_err(err)?;
+            if on { device.pump_on().await } else { device.pump_off().await }.map_err(err)?;
             Ok(json!({"ok": true}))
         }
         "brightness" => {
