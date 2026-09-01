@@ -43,36 +43,23 @@ async fn state(State(app): S) -> Result<Json<serde_json::Value>, Error> {
     let mut state = device.get_state().await?;
     // Notifications keep the state fresh on a held connection; explicit reads are only needed right after connect, before the first notification lands.
     if state.current_temp.is_none() || state.target_temp.is_none() {
-        state.current_temp = device
-            .get_current_temperature()
-            .await
-            .ok()
-            .or(state.current_temp);
-        state.target_temp = device
-            .get_target_temperature()
-            .await
-            .ok()
-            .or(state.target_temp);
+        state.current_temp = device.get_current_temperature().await.ok().or(state.current_temp);
+        state.target_temp = device.get_target_temperature().await.ok().or(state.target_temp);
         tokio::time::sleep(Duration::from_millis(300)).await;
         let refreshed = device.get_state().await?;
         state.heater_on = refreshed.heater_on;
         state.pump_on = refreshed.pump_on;
     }
-    let mut json = serde_json::to_value(&state)
-        .map_err(|e| Error(storz_rs::StorzError::Other(e.to_string())))?;
-    json["model"] = serde_json::to_value(device.device_model())
-        .map_err(|e| Error(storz_rs::StorzError::Other(e.to_string())))?;
+    let mut json = serde_json::to_value(&state).map_err(|e| Error(storz_rs::StorzError::Other(e.to_string())))?;
+    json["model"] =
+        serde_json::to_value(device.device_model()).map_err(|e| Error(storz_rs::StorzError::Other(e.to_string())))?;
     Ok(Json(json))
 }
 
-async fn events(
-    State(app): S,
-) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, Error> {
+async fn events(State(app): S) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, Error> {
     let device = device(&app).await?;
-    let stream = device
-        .subscribe_state()
-        .await?
-        .map(|state| Ok(Event::default().json_data(&state).unwrap_or_default()));
+    let stream =
+        device.subscribe_state().await?.map(|state| Ok(Event::default().json_data(&state).unwrap_or_default()));
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 
@@ -86,10 +73,7 @@ struct TempBody {
 }
 
 async fn target_temp(State(app): S, Json(body): Json<TempBody>) -> Result<StatusCode, Error> {
-    device(&app)
-        .await?
-        .set_target_temperature(body.celsius)
-        .await?;
+    device(&app).await?.set_target_temperature(body.celsius).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -149,25 +133,30 @@ struct UnitBody {
 }
 
 async fn unit(State(app): S, Json(body): Json<UnitBody>) -> Result<StatusCode, Error> {
-    device(&app)
-        .await?
-        .set_temperature_unit(body.celsius)
-        .await?;
+    device(&app).await?.set_temperature_unit(body.celsius).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Tie the display to heater activity: light it at `on_brightness` while the heater runs, dark otherwise. Follows the connection through reconnects; the manager's own scan timeout paces retries.
+/// Tie the display to heater activity: light it at `on_brightness` while the heater runs, dark otherwise. Follows the connection through reconnects without spinning when Bluetooth is unavailable.
 async fn display_automation(app: Arc<App>, on_brightness: u16) {
     use futures::StreamExt;
+    const RETRY_DELAY: Duration = Duration::from_secs(2);
+
     let mut last: Option<bool> = None;
     loop {
         let device = match app.manager.get().await {
             Ok(d) => d,
-            Err(_) => continue,
+            Err(_) => {
+                tokio::time::sleep(RETRY_DELAY).await;
+                continue;
+            }
         };
         let mut stream = match device.subscribe_state().await {
             Ok(s) => s,
-            Err(_) => continue,
+            Err(_) => {
+                tokio::time::sleep(RETRY_DELAY).await;
+                continue;
+            }
         };
         if let Ok(state) = device.get_state().await {
             apply_display(&*device, &mut last, state.heater_on, on_brightness).await;
@@ -179,12 +168,7 @@ async fn display_automation(app: Arc<App>, on_brightness: u16) {
     }
 }
 
-async fn apply_display(
-    device: &dyn VaporizerControl,
-    last: &mut Option<bool>,
-    heater_on: bool,
-    on_brightness: u16,
-) {
+async fn apply_display(device: &dyn VaporizerControl, last: &mut Option<bool>, heater_on: bool, on_brightness: u16) {
     if *last == Some(heater_on) {
         return;
     }
@@ -200,16 +184,12 @@ async fn apply_display(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
 
     let filter = std::env::var("VOLCANO_DEVICE").ok();
     let addr = std::env::var("VOLCANO_ADDR").unwrap_or_else(|_| "0.0.0.0:8814".into());
 
-    let app = Arc::new(App {
-        manager: Arc::new(DeviceManager::new(filter)),
-    });
+    let app = Arc::new(App { manager: Arc::new(DeviceManager::new(filter)) });
 
     // Warm the connection at startup so the first request doesn't pay the scan+connect cost; failure is fine, the manager reconnects on demand.
     if let Err(e) = app.manager.get().await {
@@ -217,10 +197,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // VOLCANO_DISPLAY_AUTO=<brightness> keeps the display lit only while the heater runs.
-    if let Some(on_brightness) = std::env::var("VOLCANO_DISPLAY_AUTO")
-        .ok()
-        .and_then(|v| v.parse::<u16>().ok())
-    {
+    if let Some(on_brightness) = std::env::var("VOLCANO_DISPLAY_AUTO").ok().and_then(|v| v.parse::<u16>().ok()) {
         info!("display automation on: heater -> brightness {on_brightness}, idle -> 0");
         tokio::spawn(display_automation(app.clone(), on_brightness));
     }
@@ -239,10 +216,7 @@ async fn main() -> anyhow::Result<()> {
         .with_state(app.clone());
 
     let sock_path = std::env::var("VOLCANO_SOCKET").unwrap_or_else(|_| {
-        format!(
-            "{}/volcano.sock",
-            std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into())
-        )
+        format!("{}/volcano.sock", std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into()))
     });
     {
         let manager = app.manager.clone();

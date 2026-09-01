@@ -5,17 +5,20 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use btleplug::api::{Central, CentralEvent, Peripheral as _};
+use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _};
 use futures::StreamExt;
 use tokio::sync::Mutex;
 use tracing::info;
 
+use btleplug::platform::{Adapter, Manager};
+
 use crate::error::StorzError;
 use crate::protocol::VaporizerControl;
-use crate::{connect_with_timeout, discover_first, get_adapter};
+use crate::{connect_with_timeout, discover_first};
 
 /// Lazily-connected, auto-reconnecting handle to a vaporizer.
 pub struct DeviceManager {
+    adapter: Mutex<Option<Adapter>>,
     device: Mutex<Option<Arc<dyn VaporizerControl>>>,
     filter: Option<String>,
     scan_timeout: Duration,
@@ -24,16 +27,24 @@ pub struct DeviceManager {
 impl DeviceManager {
     /// `filter` narrows discovery by device name substring or BLE address.
     pub fn new(filter: Option<String>) -> Self {
-        Self {
-            device: Mutex::new(None),
-            filter,
-            scan_timeout: Duration::from_secs(20),
-        }
+        Self { device: Mutex::new(None), adapter: Mutex::new(None), filter, scan_timeout: Duration::from_secs(20) }
     }
 
     pub fn with_scan_timeout(mut self, timeout: Duration) -> Self {
         self.scan_timeout = timeout;
         self
+    }
+
+    async fn adapter(&self) -> Result<Adapter, StorzError> {
+        let mut guard = self.adapter.lock().await;
+        if let Some(adapter) = guard.as_ref() {
+            return Ok(adapter.clone());
+        }
+
+        let manager = Manager::new().await?;
+        let adapter = manager.adapters().await?.into_iter().next().ok_or(StorzError::DeviceNotFound)?;
+        *guard = Some(adapter.clone());
+        Ok(adapter)
     }
 
     /// Get the connected device, connecting or reconnecting as needed.
@@ -42,9 +53,7 @@ impl DeviceManager {
 
         if let Some(device) = guard.as_ref() {
             // A cheap read doubles as a liveness probe; on failure fall through to reconnect. Bounded, because a probe on a half-dead connection can hang while this holds the manager lock.
-            let probe =
-                tokio::time::timeout(Duration::from_secs(5), device.get_current_temperature())
-                    .await;
+            let probe = tokio::time::timeout(Duration::from_secs(5), device.get_current_temperature()).await;
             if matches!(probe, Ok(Ok(_))) {
                 return Ok(device.clone());
             }
@@ -52,9 +61,8 @@ impl DeviceManager {
             *guard = None;
         }
 
-        let adapter = get_adapter().await?;
-        let peripheral =
-            discover_first(&adapter, self.scan_timeout, self.filter.as_deref()).await?;
+        let adapter = self.adapter().await?;
+        let peripheral = discover_first(&adapter, self.scan_timeout, self.filter.as_deref()).await?;
         let peripheral_id = peripheral.id();
         // The event stream is opened before connecting so a disconnect racing the handshake can't slip between.
         let mut events = adapter.events().await?;
