@@ -116,6 +116,15 @@ pub struct DeviceSettings {
     pub vibration: bool,
     /// Auto shutdown timer in seconds
     pub auto_shutdown_seconds: Option<u16>,
+    /// Display stays lit while the device cools (Volcano)
+    pub display_on_cooling: bool,
+    /// LED brightness (Volcano: 0-100)
+    pub brightness: Option<u16>,
+    /// Auto-shutoff time in seconds (Volcano)
+    pub shutoff_seconds: Option<u16>,
+    /// The settings registers as read, for a protocol whose meanings are reverse-engineered (Volcano PRJSTAT2/PRJSTAT3)
+    pub raw_display: Option<u16>,
+    pub raw_vibration: Option<u16>,
     /// Battery level 0-100
     pub battery_level: Option<u8>,
     /// Is charging

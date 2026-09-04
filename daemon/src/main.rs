@@ -63,6 +63,15 @@ async fn events(State(app): S) -> Result<Sse<impl Stream<Item = Result<Event, st
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 
+async fn config(State(app): S) -> Result<Json<storz_rs::DeviceSettings>, Error> {
+    Ok(Json(device(&app).await?.get_settings().await?))
+}
+
+async fn display_on_cooling(State(app): S, Json(body): Json<OnBody>) -> Result<StatusCode, Error> {
+    device(&app).await?.set_display_on_cooling(body.on).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn info(State(app): S) -> Result<Json<storz_rs::DeviceInfo>, Error> {
     Ok(Json(device(&app).await?.get_device_info().await?))
 }
@@ -213,6 +222,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/vibration", post(vibration))
         .route("/shutoff-time", post(shutoff_time))
         .route("/unit", post(unit))
+        .route("/config", get(config))
+        .route("/display-on-cooling", post(display_on_cooling))
         .with_state(app.clone());
 
     let sock_path = std::env::var("VOLCANO_SOCKET").unwrap_or_else(|_| {

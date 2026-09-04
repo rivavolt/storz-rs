@@ -73,6 +73,12 @@ enum Command {
         #[arg(value_parser = ["c", "f", "celsius", "fahrenheit"])]
         unit: String,
     },
+    /// Show the device's settings, or set one: `config`, `config setpoint-alert off`
+    Config {
+        /// brightness | setpoint-alert | display-on-cooling | shutoff | unit
+        key: Option<String>,
+        value: Option<String>,
+    },
     /// Run a workflow: comma-separated steps of TEMP:HOLD_SECS:PUMP_SECS, e.g. "185:60:8,195:45:8"
     Workflow { steps: String },
     /// Wait until the current temperature reaches the target (or a given temperature)
@@ -237,6 +243,41 @@ async fn run(cli: &Cli, device: &dyn VaporizerControl) -> Result<()> {
             let celsius = unit.starts_with('c');
             device.set_temperature_unit(celsius).await?;
             println!("unit {}", if celsius { "celsius" } else { "fahrenheit" });
+        }
+        Command::Config { key, value } => {
+            match (key.as_deref(), value.as_deref()) {
+                (None, _) => {
+                    let s = device.get_settings().await?;
+                    if cli.json {
+                        println!("{}", serde_json::to_string_pretty(&s)?);
+                    } else {
+                        let on = |b: bool| if b { "on" } else { "off" };
+                        println!("brightness:         {}", s.brightness.map_or("?".into(), |v| v.to_string()));
+                        println!("setpoint-alert:     {}", on(s.vibration));
+                        println!("display-on-cooling: {}", on(s.display_on_cooling));
+                        println!("shutoff:            {}", s.shutoff_seconds.map_or("?".into(), |v| format!("{v}s")));
+                        println!("unit:               {}", if s.is_celsius { "C" } else { "F" });
+                    }
+                }
+                (Some(k), Some(v)) => {
+                    let flag = || match v {
+                        "on" | "true" | "yes" => Ok(true),
+                        "off" | "false" | "no" => Ok(false),
+                        _ => Err(anyhow::anyhow!("{k} takes on|off, got {v}")),
+                    };
+                    match k {
+                        "brightness" => device.set_brightness(v.parse().context("brightness takes 0-100")?).await?,
+                        // The Volcano has no vibration motor: the protocol's vibration flag is the setpoint-reached alert, which the device sounds by pulsing the pump.
+                        "setpoint-alert" | "vibration" => device.set_vibration(flag()?).await?,
+                        "display-on-cooling" => device.set_display_on_cooling(flag()?).await?,
+                        "shutoff" => device.set_shutoff_time(v.parse().context("shutoff takes seconds")?).await?,
+                        "unit" => device.set_temperature_unit(matches!(v, "c" | "C" | "celsius")).await?,
+                        other => anyhow::bail!("unknown setting {other}"),
+                    }
+                    println!("{k} set to {v}");
+                }
+                (Some(k), None) => anyhow::bail!("{k} needs a value"),
+            }
         }
         Command::Workflow { steps } => {
             let workflow = parse_workflow(steps)?;

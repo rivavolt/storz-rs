@@ -104,6 +104,14 @@ impl VaporizerControl for HttpDevice {
         Ok(self.state().await?.state)
     }
 
+    async fn get_settings(&self) -> Result<crate::device::DeviceSettings, StorzError> {
+        get_json(&self.client, &format!("{}/config", self.base)).await
+    }
+
+    async fn set_display_on_cooling(&self, on: bool) -> Result<(), StorzError> {
+        self.post("/display-on-cooling", &serde_json::json!({ "on": on })).await
+    }
+
     async fn subscribe_state(&self) -> Result<Pin<Box<dyn Stream<Item = DeviceState> + Send>>, StorzError> {
         // Streaming responses must not be subject to the client-wide request timeout, so /events gets its own client.
         let client = reqwest::Client::new();
