@@ -10,7 +10,7 @@ use tokio::sync::{Mutex, broadcast};
 use tokio_stream::wrappers::BroadcastStream;
 use tracing::{debug, warn};
 
-use crate::device::{DeviceInfo, DeviceModel, DeviceState, volcano_flags, volcano_vibration_flags};
+use crate::device::{DeviceInfo, DeviceModel, DeviceSettings, DeviceState, volcano_flags, volcano_vibration_flags};
 use crate::error::StorzError;
 use crate::protocol::VaporizerControl;
 use crate::utils;
@@ -162,6 +162,8 @@ impl VolcanoHybrid {
                 let mut settings = state.settings.take().unwrap_or_default();
                 // FAHRENHEIT_ENA (0x0200): if NOT set, celsius
                 settings.is_celsius = (flags & volcano_flags::FAHRENHEIT_ENA) == 0;
+                settings.display_on_cooling = (flags & volcano_flags::DISPLAY_ON_COOLING) != 0;
+                settings.raw_display = Some(flags);
                 state.settings = Some(settings);
                 debug!(
                     "Volcano display flags: 0x{flags:04X} (celsius={})",
@@ -254,6 +256,23 @@ impl VaporizerControl for VolcanoHybrid {
             }
         };
         Ok(Box::pin(updates.take_until(until_closed)))
+    }
+
+    async fn get_settings(&self) -> Result<DeviceSettings, StorzError> {
+        // Written as a mask alone to set a flag and 0x10000|mask to clear it, so a set bit is a feature that is on — except FAHRENHEIT_ENA, which names Fahrenheit and so reads inverted for Celsius.
+        let display = self.read_u16(VOLCANO_DISPLAY).await?;
+        let vibration = self.read_u16(VOLCANO_VIBRATION).await.ok();
+        Ok(DeviceSettings {
+            is_celsius: (display & volcano_flags::FAHRENHEIT_ENA) == 0,
+            display_on_cooling: (display & volcano_flags::DISPLAY_ON_COOLING) != 0,
+            // On a Volcano the setpoint-reached alert has no vibration motor to run, so the device pulses the pump instead.
+            vibration: vibration.is_some_and(|v| (v & volcano_vibration_flags::VIBRATION as u16) != 0),
+            brightness: self.read_u16(VOLCANO_BRIGHTNESS).await.ok(),
+            shutoff_seconds: self.read_u16(VOLCANO_SHUTOFF_TIME).await.ok(),
+            raw_display: Some(display),
+            raw_vibration: vibration,
+            ..Default::default()
+        })
     }
 
     async fn set_brightness(&self, value: u16) -> Result<(), StorzError> {

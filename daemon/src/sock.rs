@@ -123,6 +123,15 @@ async fn dispatch(manager: &DeviceManager, op: &str, req: &Value) -> Result<Valu
             device.set_shutoff_time(seconds).await.map_err(err)?;
             Ok(json!({"ok": true}))
         }
+        "config" => {
+            let settings = device.get_settings().await.map_err(err)?;
+            Ok(json!({"ok": true, "config": settings}))
+        }
+        "display-on-cooling" => {
+            let on = req["on"].as_bool().ok_or("missing on")?;
+            device.set_display_on_cooling(on).await.map_err(err)?;
+            Ok(json!({"ok": true}))
+        }
         "unit" => {
             let celsius = req["celsius"].as_bool().ok_or("missing celsius")?;
             device.set_temperature_unit(celsius).await.map_err(err)?;
