@@ -26,6 +26,7 @@ use crate::device::{DeviceInfo, DeviceModel, DeviceSettings, DeviceState};
 use crate::error::StorzError;
 
 /// Trait for controlling a Storz & Bickel vaporizer over BLE.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait VaporizerControl: Send + Sync {
     /// Read the current measured temperature in Celsius.
