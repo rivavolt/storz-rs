@@ -27,7 +27,12 @@ pub struct DeviceManager {
 impl DeviceManager {
     /// `filter` narrows discovery by device name substring or BLE address.
     pub fn new(filter: Option<String>) -> Self {
-        Self { device: Mutex::new(None), adapter: Mutex::new(None), filter, scan_timeout: Duration::from_secs(20) }
+        Self {
+            device: Mutex::new(None),
+            adapter: Mutex::new(None),
+            filter,
+            scan_timeout: Duration::from_secs(20),
+        }
     }
 
     pub fn with_scan_timeout(mut self, timeout: Duration) -> Self {
@@ -42,7 +47,12 @@ impl DeviceManager {
         }
 
         let manager = Manager::new().await?;
-        let adapter = manager.adapters().await?.into_iter().next().ok_or(StorzError::DeviceNotFound)?;
+        let adapter = manager
+            .adapters()
+            .await?
+            .into_iter()
+            .next()
+            .ok_or(StorzError::DeviceNotFound)?;
         *guard = Some(adapter.clone());
         Ok(adapter)
     }
@@ -53,7 +63,9 @@ impl DeviceManager {
 
         if let Some(device) = guard.as_ref() {
             // A cheap read doubles as a liveness probe; on failure fall through to reconnect. Bounded, because a probe on a half-dead connection can hang while this holds the manager lock.
-            let probe = tokio::time::timeout(Duration::from_secs(5), device.get_current_temperature()).await;
+            let probe =
+                tokio::time::timeout(Duration::from_secs(5), device.get_current_temperature())
+                    .await;
             if matches!(probe, Ok(Ok(_))) {
                 return Ok(device.clone());
             }
@@ -62,7 +74,8 @@ impl DeviceManager {
         }
 
         let adapter = self.adapter().await?;
-        let peripheral = discover_first(&adapter, self.scan_timeout, self.filter.as_deref()).await?;
+        let peripheral =
+            discover_first(&adapter, self.scan_timeout, self.filter.as_deref()).await?;
         let peripheral_id = peripheral.id();
         // The event stream is opened before connecting so a disconnect racing the handshake can't slip between.
         let mut events = adapter.events().await?;

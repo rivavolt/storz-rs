@@ -25,7 +25,11 @@ impl Crafty {
     pub async fn new(peripheral: Peripheral) -> Result<Self, StorzError> {
         let (state_tx, _) = broadcast::channel(16);
 
-        let device = Self { peripheral, state: Arc::new(Mutex::new(DeviceState::default())), state_tx };
+        let device = Self {
+            peripheral,
+            state: Arc::new(Mutex::new(DeviceState::default())),
+            state_tx,
+        };
 
         device.init_notifications().await?;
         device.spawn_notification_loop();
@@ -74,7 +78,10 @@ impl Crafty {
             };
 
             while let Some(data) = stream.next().await {
-                debug!("Crafty raw notification uuid={} bytes={:02X?}", data.uuid, data.value);
+                debug!(
+                    "Crafty raw notification uuid={} bytes={:02X?}",
+                    data.uuid, data.value
+                );
                 Self::handle_notification_inner(&state, &state_tx, data.uuid, &data.value);
             }
 
@@ -99,7 +106,11 @@ impl Crafty {
                 let _ = state_tx.send(state.clone());
             }
         } else {
-            debug!("Crafty unhandled notification uuid={} len={}", uuid, data.len());
+            debug!(
+                "Crafty unhandled notification uuid={} len={}",
+                uuid,
+                data.len()
+            );
         }
     }
 }
@@ -121,31 +132,43 @@ impl VaporizerControl for Crafty {
     async fn set_target_temperature(&self, celsius: f32) -> Result<(), StorzError> {
         let ch = self.characteristic(CRAFTY_WRITE_TEMP).await?;
         let raw = utils::celsius_to_raw_u16(celsius)?;
-        self.peripheral.write(&ch, &raw, WriteType::WithoutResponse).await?;
+        self.peripheral
+            .write(&ch, &raw, WriteType::WithoutResponse)
+            .await?;
         debug!("Crafty target temp set to {celsius}°C");
         Ok(())
     }
 
     async fn heater_on(&self) -> Result<(), StorzError> {
         let ch = self.characteristic(CRAFTY_HEATER_ON).await?;
-        self.peripheral.write(&ch, &[0x00], WriteType::WithoutResponse).await?;
+        self.peripheral
+            .write(&ch, &[0x00], WriteType::WithoutResponse)
+            .await?;
         debug!("Crafty heater ON");
         Ok(())
     }
 
     async fn heater_off(&self) -> Result<(), StorzError> {
         let ch = self.characteristic(CRAFTY_HEATER_OFF).await?;
-        self.peripheral.write(&ch, &[0x00], WriteType::WithoutResponse).await?;
+        self.peripheral
+            .write(&ch, &[0x00], WriteType::WithoutResponse)
+            .await?;
         debug!("Crafty heater OFF");
         Ok(())
     }
 
     async fn pump_on(&self) -> Result<(), StorzError> {
-        Err(StorzError::UnsupportedOperation { device: "Crafty".into(), operation: "pump_on".into() })
+        Err(StorzError::UnsupportedOperation {
+            device: "Crafty".into(),
+            operation: "pump_on".into(),
+        })
     }
 
     async fn pump_off(&self) -> Result<(), StorzError> {
-        Err(StorzError::UnsupportedOperation { device: "Crafty".into(), operation: "pump_off".into() })
+        Err(StorzError::UnsupportedOperation {
+            device: "Crafty".into(),
+            operation: "pump_off".into(),
+        })
     }
 
     async fn get_state(&self) -> Result<DeviceState, StorzError> {
@@ -153,16 +176,22 @@ impl VaporizerControl for Crafty {
         Ok(state.clone())
     }
 
-    async fn subscribe_state(&self) -> Result<Pin<Box<dyn Stream<Item = DeviceState> + Send>>, StorzError> {
+    async fn subscribe_state(
+        &self,
+    ) -> Result<Pin<Box<dyn Stream<Item = DeviceState> + Send>>, StorzError> {
         let rx = self.state_tx.subscribe();
-        Ok(Box::pin(BroadcastStream::new(rx).filter_map(|r| async move { r.ok() })))
+        Ok(Box::pin(
+            BroadcastStream::new(rx).filter_map(|r| async move { r.ok() }),
+        ))
     }
 
     async fn set_boost_temperature(&self, celsius: f32) -> Result<(), StorzError> {
         let clamped = celsius.clamp(0.0, 30.0);
         let ch = self.characteristic(CRAFTY_WRITE_BOOST_TEMP).await?;
         let raw = ((clamped * 10.0).round() as u16).to_le_bytes();
-        self.peripheral.write(&ch, &raw, WriteType::WithoutResponse).await?;
+        self.peripheral
+            .write(&ch, &raw, WriteType::WithoutResponse)
+            .await?;
         debug!("Crafty boost temp set to {clamped}°C");
         Ok(())
     }
@@ -170,7 +199,9 @@ impl VaporizerControl for Crafty {
     async fn set_brightness(&self, value: u16) -> Result<(), StorzError> {
         let ch = self.characteristic(CRAFTY_LED_BRIGHTNESS).await?;
         let raw = value.to_le_bytes();
-        self.peripheral.write(&ch, &raw, WriteType::WithoutResponse).await?;
+        self.peripheral
+            .write(&ch, &raw, WriteType::WithoutResponse)
+            .await?;
         debug!("Crafty LED brightness set to {value}");
         Ok(())
     }
@@ -204,7 +235,9 @@ impl VaporizerControl for Crafty {
 
     async fn factory_reset(&self) -> Result<(), StorzError> {
         let ch = self.characteristic(CRAFTY_FACTORY_RESET).await?;
-        self.peripheral.write(&ch, &[0x00], WriteType::WithoutResponse).await?;
+        self.peripheral
+            .write(&ch, &[0x00], WriteType::WithoutResponse)
+            .await?;
         debug!("Crafty factory reset triggered");
         Ok(())
     }
@@ -212,7 +245,9 @@ impl VaporizerControl for Crafty {
     async fn set_auto_off_countdown(&self, seconds: u16) -> Result<(), StorzError> {
         let ch = self.characteristic(CRAFTY_AUTO_OFF_COUNTDOWN).await?;
         let raw = seconds.to_le_bytes();
-        self.peripheral.write(&ch, &raw, WriteType::WithoutResponse).await?;
+        self.peripheral
+            .write(&ch, &raw, WriteType::WithoutResponse)
+            .await?;
         debug!("Crafty auto-off countdown set to {seconds}s");
         Ok(())
     }
@@ -226,7 +261,9 @@ impl VaporizerControl for Crafty {
     async fn set_security_code(&self, code: u16) -> Result<(), StorzError> {
         let ch = self.characteristic(CRAFTY_SICHERHEITSCODE).await?;
         let raw = code.to_le_bytes();
-        self.peripheral.write(&ch, &raw, WriteType::WithoutResponse).await?;
+        self.peripheral
+            .write(&ch, &raw, WriteType::WithoutResponse)
+            .await?;
         debug!("Crafty security code set");
         Ok(())
     }
