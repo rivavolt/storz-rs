@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["DeviceModel","HeaterMode"],"mod":["volcano_flags","volcano_vibration_flags"],"struct":["DeviceInfo","DeviceSettings","DeviceState"]};
